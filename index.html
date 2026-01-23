@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>簡報達人擂台賽評分系統 (Dev)</title>
+
+    <!-- 1. Google Material Icons (圖示庫) -->
+    <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
+
+    <!-- 2. Tailwind CSS (樣式框架) - 透過 CDN 即時編譯 -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        // 設定 Tailwind 變數，對應 SRS 視覺規範
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: '#3E2723',   // 主色：暖深棕色
+                        secondary: '#D84315', // CTA/強調色：赤陶紅
+                        'award-gold': '#FFD700',
+                        'award-silver': '#C0C0C0',
+                    }
+                }
+            }
+        }
+    </script>
+
+    <!-- 3. React & ReactDOM (核心框架) - UMD 版本 -->
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+
+    <!-- 4. Babel (JSX 編譯器) - 讓瀏覽器看懂 React 語法 -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+    <!-- 5. SheetJS (Excel 解析庫) - 關鍵套件 -->
+    <script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
+
+    <style>
+        /* 全域樣式微調 */
+        body {
+            font-family: 'Noto Sans TC', sans-serif;
+            background-color: #F5F5F5; /* 淺灰背景 */
+        }
+    </style>
+</head>
+<body>
+    <!-- React 掛載點 -->
+    <div id="root"></div>
+
+    <!-- 主程式邏輯 (使用 Babel 編譯 JSX) -->
+    <script type="text/babel">
+        const { useState, useEffect } = React;
+
+        // --- 模擬元件: 登入頁面 (Login) ---
+        const Login = () => {
+            return (
+                <div className="min-h-screen flex items-center justify-center bg-gray-100">
+                    <div className="bg-white p-8 rounded-lg shadow-lg w-full max-w-md border-t-4 border-primary">
+                        
+                        {/* 標題區 */}
+                        <div className="text-center mb-8">
+                            <h1 className="text-3xl font-bold text-primary mb-2">
+                                簡報達人擂台賽
+                            </h1>
+                            <p className="text-gray-500">評審評分系統 v75.0</p>
+                        </div>
+
+                        {/* 表單區 (暫時僅供展示 UI) */}
+                        <div className="space-y-6">
+                            
+                            {/* 組別選擇 */}
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">
+                                    登入身分
+                                </label>
+                                <select className="w-full border-gray-300 rounded-md shadow-sm p-3 border focus:ring-secondary focus:border-secondary">
+                                    <option>請選擇身分...</option>
+                                    <optgroup label="系統管理">
+                                        <option value="admin">管理員後台</option>
+                                    </optgroup>
+                                    <optgroup label="評審專區">
+                                        <option value="judge">評審登入</option>
+                                    </optgroup>
+                                </select>
+                            </div>
+
+                            {/* 按鈕 */}
+                            <button 
+                                className="w-full flex justify-center py-3 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-secondary hover:bg-orange-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-secondary transition-colors"
+                                onClick={() => alert('後端 API 尚未串接，這只是個漂亮的空殼！')}
+                            >
+                                <span className="material-icons text-sm mr-2">login</span>
+                                登入系統
+                            </button>
+                        </div>
+
+                        {/* 頁尾資訊 */}
+                        <div className="mt-6 text-center text-xs text-gray-400">
+                            &copy; 114學年度 宜蘭瘋學習
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        // --- 主應用入口 (App) ---
+        const App = () => {
+            return (
+                <React.StrictMode>
+                    {/* 這裡未來會放 Router，現在先直接顯示 Login */}
+                    <Login />
+                </React.StrictMode>
+            );
+        };
+
+        // --- 啟動 React ---
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
