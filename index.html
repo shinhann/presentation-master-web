@@ -52,52 +52,203 @@
     <script type="text/babel">
         const { useState, useEffect } = React;
 
-        // --- 模擬元件: 登入頁面 (Login) ---
-        const Login = () => {
+        // 【設定區】請在此替換你的 Google Apps Script 部署網址 (Web App URL)
+        const API_URL = "https://script.google.com/macros/s/AKfycbwLRsiyHMiQzqyk52CBkmnASqJUznH3JWW50rzKNRNAuRGY5Ci8-IQNKxOOnxE99vLq/exec"; 
+        
+        // 【設定區】通訊金鑰 (需與後端 System_Config 裡的 API_Key 一致)
+        const API_KEY = "TEST_KEY_123"; 
+
+        // --- 元件: 登入頁面 (Login) ---
+        const Login = ({ onLoginSuccess }) => {
+            const [userType, setUserType] = useState('judge'); // 預設身分: 評審
+            const [formData, setFormData] = useState({ id: '', password: '' });
+            const [loading, setLoading] = useState(false);
+            const [error, setError] = useState('');
+
+            // 處理欄位變更
+            const handleChange = (e) => {
+                const { name, value } = e.target;
+                setFormData(prev => ({ ...prev, [name]: value }));
+                if (error) setError(''); // 輸入時清除錯誤訊息
+            };
+
+            // 處理身分切換
+            const handleUserTypeChange = (e) => {
+                setUserType(e.target.value);
+                setFormData({ id: '', password: '' }); // 切換身分清空欄位
+                setError('');
+            };
+
+            // 執行登入 API
+            const handleLogin = async (e) => {
+                e.preventDefault();
+                setLoading(true);
+                setError('');
+
+                // 簡單的前端防呆
+                if (userType === 'judge' && !formData.id) {
+                    setError('請輸入評審代碼');
+                    setLoading(false);
+                    return;
+                }
+                if (!formData.password) {
+                    setError('請輸入密碼');
+                    setLoading(false);
+                    return;
+                }
+
+                try {
+                    // 建構 Payload
+                    const payload = {
+                        action: 'login',
+                        API_Key: API_KEY, 
+                        user_type: userType,
+                        id: userType === 'judge' ? formData.id.toUpperCase() : '', // 評審代碼強制轉大寫
+                        password: formData.password
+                    };
+
+                    console.log('正在傳送登入請求...', payload);
+
+                    // 發送請求 (Fetch API)
+                    // 注意: Google Apps Script Web App 預設會 redirect，
+                    // fetch 只要沒發生網路錯誤都會回傳 resolve，需檢查 json 內容。
+                    const response = await fetch(API_URL, {
+                        method: 'POST',
+                        body: JSON.stringify(payload)
+                    });
+
+                    const result = await response.json();
+
+                    if (result.status === 'success') {
+                        // 登入成功
+                        // alert('登入成功！'); // 開發階段方便確認，之後可移除
+                        
+                        // 將使用者資訊存入 LocalStorage (以便重新整理後維持登入)
+                        localStorage.setItem('currentUser', JSON.stringify(result.data));
+                        
+                        // 呼叫父層 callback 更新 App 狀態
+                        onLoginSuccess(result.data);
+                    } else {
+                        // 後端回傳錯誤 (如密碼錯誤)
+                        setError(result.message || '登入失敗，請檢查帳號密碼。');
+                    }
+
+                } catch (err) {
+                    console.error('Login Error:', err);
+                    setError('無法連接伺服器，請檢查網路或 API 網址。');
+                } finally {
+                    setLoading(false);
+                }
+            };
+
             return (
-                <div className="min-h-screen flex items-center justify-center bg-gray-100">
+                <div className="min-h-screen flex items-center justify-center bg-gray-100 p-4">
                     <div className="bg-white p-8 rounded-lg shadow-lg w-full max-w-md border-t-4 border-primary">
                         
                         {/* 標題區 */}
                         <div className="text-center mb-8">
-                            <h1 className="text-3xl font-bold text-primary mb-2">
-                                簡報達人擂台賽
+                            <h1 className="text-2xl font-bold text-primary mb-2">
+                                114學年度 簡報達人擂台賽
                             </h1>
-                            <p className="text-gray-500">評審評分系統 v75.0</p>
+                            <p className="text-gray-500 font-medium">評審評分系統</p>
                         </div>
 
-                        {/* 表單區 (暫時僅供展示 UI) */}
-                        <div className="space-y-6">
+                        {/* 錯誤訊息提示 */}
+                        {error && (
+                            <div className="mb-4 p-3 bg-red-50 text-red-700 text-sm rounded border border-red-200 flex items-center animate-pulse">
+                                <span className="material-icons text-sm mr-2">error</span>
+                                {error}
+                            </div>
+                        )}
+
+                        {/* 登入表單 */}
+                        <form onSubmit={handleLogin} className="space-y-6">
                             
-                            {/* 組別選擇 */}
+                            {/* 1. 身分選擇 */}
                             <div>
                                 <label className="block text-sm font-medium text-gray-700 mb-1">
                                     登入身分
                                 </label>
-                                <select className="w-full border-gray-300 rounded-md shadow-sm p-3 border focus:ring-secondary focus:border-secondary">
-                                    <option>請選擇身分...</option>
-                                    <optgroup label="系統管理">
-                                        <option value="admin">管理員後台</option>
-                                    </optgroup>
-                                    <optgroup label="評審專區">
-                                        <option value="judge">評審登入</option>
-                                    </optgroup>
-                                </select>
+                                <div className="relative">
+                                    <span className="material-icons absolute left-3 top-3 text-gray-400 text-sm">badge</span>
+                                    <select 
+                                        value={userType}
+                                        onChange={handleUserTypeChange}
+                                        className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-secondary focus:border-secondary bg-white appearance-none"
+                                    >
+                                        <option value="judge">評審委員 (Judge)</option>
+                                        <option value="admin">系統管理員 (Admin)</option>
+                                    </select>
+                                    <span className="material-icons absolute right-3 top-3 text-gray-400 text-sm pointer-events-none">expand_more</span>
+                                </div>
                             </div>
 
-                            {/* 按鈕 */}
+                            {/* 2. 評審代碼 (僅評審顯示) */}
+                            {userType === 'judge' && (
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                                        評審代碼
+                                    </label>
+                                    <div className="relative">
+                                        <span className="material-icons absolute left-3 top-3 text-gray-400 text-sm">person</span>
+                                        <input
+                                            type="text"
+                                            name="id"
+                                            value={formData.id}
+                                            onChange={handleChange}
+                                            placeholder="請輸入代號 (如: A)"
+                                            className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-secondary focus:border-secondary uppercase"
+                                        />
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* 3. 密碼輸入 */}
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">
+                                    {userType === 'admin' ? '管理員密碼' : '登入密碼'}
+                                </label>
+                                <div className="relative">
+                                    <span className="material-icons absolute left-3 top-3 text-gray-400 text-sm">lock</span>
+                                    <input
+                                        type="password"
+                                        name="password"
+                                        value={formData.password}
+                                        onChange={handleChange}
+                                        placeholder="請輸入密碼"
+                                        className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-secondary focus:border-secondary"
+                                    />
+                                </div>
+                            </div>
+
+                            {/* 4. 登入按鈕 */}
                             <button 
-                                className="w-full flex justify-center py-3 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-secondary hover:bg-orange-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-secondary transition-colors"
-                                onClick={() => alert('後端 API 尚未串接，這只是個漂亮的空殼！')}
+                                type="submit"
+                                disabled={loading}
+                                className={`w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white transition-colors
+                                    ${loading ? 'bg-gray-400 cursor-not-allowed' : 'bg-secondary hover:bg-orange-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-secondary'}
+                                `}
                             >
-                                <span className="material-icons text-sm mr-2">login</span>
-                                登入系統
+                                {loading ? (
+                                    <>
+                                        <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                        </svg>
+                                        登入驗證中...
+                                    </>
+                                ) : (
+                                    <>
+                                        <span className="material-icons text-sm mr-2">login</span>
+                                        登入系統
+                                    </button>
+                                )}
                             </button>
-                        </div>
+                        </form>
 
                         {/* 頁尾資訊 */}
                         <div className="mt-6 text-center text-xs text-gray-400">
-                            &copy; 114學年度 宜蘭瘋學習
+                            &copy; 114學年度 宜蘭瘋學習 | 系統版本 v75.0
                         </div>
                     </div>
                 </div>
@@ -106,10 +257,47 @@
 
         // --- 主應用入口 (App) ---
         const App = () => {
+            const [user, setUser] = useState(null);
+
+            // 應用程式載入時，檢查是否有舊的登入資訊
+            useEffect(() => {
+                const storedUser = localStorage.getItem('currentUser');
+                if (storedUser) {
+                    try {
+                        setUser(JSON.parse(storedUser));
+                    } catch (e) {
+                        localStorage.removeItem('currentUser');
+                    }
+                }
+            }, []);
+
+            // 登出處理
+            const handleLogout = () => {
+                localStorage.removeItem('currentUser');
+                setUser(null);
+            };
+
             return (
                 <React.StrictMode>
-                    {/* 這裡未來會放 Router，現在先直接顯示 Login */}
-                    <Login />
+                    { !user ? (
+                        <Login onLoginSuccess={setUser} />
+                    ) : (
+                        // 登入後的主畫面 (暫時預留位置)
+                        <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center">
+                            <div className="bg-white p-8 rounded shadow text-center">
+                                <h2 className="text-2xl font-bold text-primary mb-4">歡迎回來！</h2>
+                                <p className="text-lg mb-2">{user.role === 'admin' ? '系統管理員' : `${user.judge_name} 老師`}</p>
+                                <p className="text-gray-500 mb-6">目前權限：{user.role === 'judge' ? `評審 (${user.category})` : '後台管理'}</p>
+                                
+                                <button 
+                                    onClick={handleLogout}
+                                    className="px-4 py-2 bg-gray-200 text-gray-700 rounded hover:bg-gray-300 transition"
+                                >
+                                    登出系統
+                                </button>
+                            </div>
+                        </div>
+                    )}
                 </React.StrictMode>
             );
         };
