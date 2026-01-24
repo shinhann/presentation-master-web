@@ -45,222 +45,216 @@
     <div id="root"></div>
 
 <script type="text/babel">
-        if (typeof React === 'undefined') {
-            alert("錯誤：React 無法載入，請檢查網路。");
-        }
+    if (typeof React === 'undefined') {
+        alert("錯誤：React 無法載入，請檢查網路。");
+    }
 
-        const { useState, useEffect } = React;
+    const { useState, useEffect } = React;
 
-        // ================= CONFIG 設定區 =================
+    // ================= CONFIG 設定區 =================
 
-        // 1. Google Apps Script 部署網址 (後端 API)
-        const API_URL = "https://script.google.com/macros/s/AKfycbwLRsiyHMiQzqyk52CBkmnASqJUznH3JWW50rzKNRNAuRGY5Ci8-IQNKxOOnxE99vLq/exec";
+    // 1. Google Apps Script 部署網址 (後端 API)
+    const API_URL = "https://script.google.com/macros/s/AKfycbwLRsiyHMiQzqyk52CBkmnASqJUznH3JWW50rzKNRNAuRGY5Ci8-IQNKxOOnxE99vLq/exec";
+    
+    // 2. API Key
+    const API_KEY = "TEST_KEY_123"; 
+
+    // 3. 全域組別定義 (Global Constants)
+    const ALL_CATEGORIES = [
+      "宜蘭在地國中組", "宜蘭在地國小組",
+      "環境永續國中組", "環境永續國小組",
+      "校訂課程國中組", "校訂課程國小組"
+    ];
+
+    // =================================================================
+
+    // --- 登入頁面元件 (Login) ---
+    const Login = ({ onLoginSuccess }) => {
+        const [userType, setUserType] = useState('judge');
+        const [formData, setFormData] = useState({ id: '', password: '' });
+        const [loading, setLoading] = useState(false);
+        const [error, setError] = useState('');
         
-        // 2. API Key
-        const API_KEY = "TEST_KEY_123"; 
+        const [judgeList, setJudgeList] = useState([]);
+        const [isListLoading, setIsListLoading] = useState(false);
 
-        // 3. 全域組別定義 (Global Constants)
-        const ALL_CATEGORIES = [
-          "宜蘭在地國中組", "宜蘭在地國小組",
-          "環境永續國中組", "環境永續國小組",
-          "校訂課程國中組", "校訂課程國小組"
-        ];
+        useEffect(() => {
+            if (userType === 'judge') {
+                fetchJudgeList();
+            }
+        }, [userType]);
 
-        // =================================================================
-
-        // --- 登入頁面元件 (Login) ---
-        const Login = ({ onLoginSuccess }) => {
-            const [userType, setUserType] = useState('judge');
-            const [formData, setFormData] = useState({ id: '', password: '' });
-            const [loading, setLoading] = useState(false);
-            const [error, setError] = useState('');
-            
-            const [judgeList, setJudgeList] = useState([]);
-            const [isListLoading, setIsListLoading] = useState(false);
-
-            useEffect(() => {
-                if (userType === 'judge') {
-                    fetchJudgeList();
+        const fetchJudgeList = async () => {
+            setIsListLoading(true);
+            try {
+                const response = await fetch(API_URL, {
+                    method: 'POST',
+                    body: JSON.stringify({
+                        action: 'getJudgeList',
+                        API_Key: API_KEY
+                    })
+                });
+                const result = await response.json();
+                if (result.status === 'success') {
+                    setJudgeList(result.data);
+                } else {
+                    console.warn("無法載入評審名單:", result.message);
                 }
-            }, [userType]);
+            } catch (err) {
+                console.error("無法載入評審名單", err);
+                setError("無法連接伺服器讀取評審名單");
+            } finally {
+                setIsListLoading(false);
+            }
+        };
 
-            const fetchJudgeList = async () => {
-                setIsListLoading(true);
-                try {
-                    const response = await fetch(API_URL, {
-                        method: 'POST',
-                        body: JSON.stringify({
-                            action: 'getJudgeList',
-                            API_Key: API_KEY
-                        })
-                    });
-                    const result = await response.json();
-                    if (result.status === 'success') {
-                        setJudgeList(result.data);
-                    } else {
-                        console.warn("無法載入評審名單:", result.message);
-                    }
-                } catch (err) {
-                    console.error("無法載入評審名單", err);
-                    setError("無法連接伺服器讀取評審名單");
-                } finally {
-                    setIsListLoading(false);
+        const handleChange = (e) => {
+            const { name, value } = e.target;
+            setFormData(prev => ({ ...prev, [name]: value }));
+            if (error) setError('');
+        };
+
+        const handleUserTypeChange = (e) => {
+            setUserType(e.target.value);
+            setFormData({ id: '', password: '' });
+            setError('');
+        };
+
+        const handleLogin = async (e) => {
+            e.preventDefault();
+            setLoading(true);
+            setError('');
+
+            if (userType === 'judge' && !formData.id) {
+                setError('請選擇評審姓名');
+                setLoading(false);
+                return;
+            }
+            if (!formData.password) {
+                setError('請輸入密碼');
+                setLoading(false);
+                return;
+            }
+
+            try {
+                const payload = {
+                    action: 'login',
+                    API_Key: API_KEY, 
+                    user_type: userType,
+                    id: userType === 'judge' ? formData.id : '', 
+                    password: formData.password
+                };
+
+                const response = await fetch(API_URL, {
+                    method: 'POST',
+                    body: JSON.stringify(payload)
+                });
+
+                const result = await response.json();
+
+                if (result.status === 'success') {
+                    const userData = { ...result.data, role: userType === 'admin' ? 'admin' : 'judge' };
+                    localStorage.setItem('currentUser', JSON.stringify(userData));
+                    onLoginSuccess(userData);
+                } else {
+                    setError(result.message || '登入失敗，請檢查帳號密碼。');
                 }
-            };
 
-            const handleChange = (e) => {
-                const { name, value } = e.target;
-                setFormData(prev => ({ ...prev, [name]: value }));
-                if (error) setError('');
-            };
+            } catch (err) {
+                console.error('Login Error:', err);
+                setError('無法連接伺服器，請檢查網路或 API 網址。');
+            } finally {
+                setLoading(false);
+            }
+        };
 
-            const handleUserTypeChange = (e) => {
-                setUserType(e.target.value);
-                setFormData({ id: '', password: '' });
-                setError('');
-            };
-
-            const handleLogin = async (e) => {
-                e.preventDefault();
-                setLoading(true);
-                setError('');
-
-                if (userType === 'judge' && !formData.id) {
-                    setError('請選擇評審姓名');
-                    setLoading(false);
-                    return;
-                }
-                if (!formData.password) {
-                    setError('請輸入密碼');
-                    setLoading(false);
-                    return;
-                }
-
-                try {
-                    const payload = {
-                        action: 'login',
-                        API_Key: API_KEY, 
-                        user_type: userType,
-                        id: userType === 'judge' ? formData.id : '', 
-                        password: formData.password
-                    };
-
-                    const response = await fetch(API_URL, {
-                        method: 'POST',
-                        body: JSON.stringify(payload)
-                    });
-
-                    const result = await response.json();
-
-                    if (result.status === 'success') {
-                        // 這裡很重要：統一將 role 寫入 user 物件
-                        const userData = { ...result.data, role: userType === 'admin' ? 'admin' : 'judge' };
-                        localStorage.setItem('currentUser', JSON.stringify(userData));
-                        onLoginSuccess(userData);
-                    } else {
-                        setError(result.message || '登入失敗，請檢查帳號密碼。');
-                    }
-
-                } catch (err) {
-                    console.error('Login Error:', err);
-                    setError('無法連接伺服器，請檢查網路或 API 網址。');
-                } finally {
-                    setLoading(false);
-                }
-            };
-
-            return (
-                <div className="min-h-screen flex items-center justify-center bg-gray-100 p-4">
-                    <div className="bg-white p-8 rounded-lg shadow-lg w-full max-w-md border-t-4 border-primary">
-                        <div className="text-center mb-8">
-                            <h1 className="text-2xl font-bold text-primary mb-2">114學年度 簡報達人擂台賽</h1>
-                            <p className="text-gray-500 font-medium">評審評分系統</p>
+        return (
+            <div className="min-h-screen flex items-center justify-center bg-gray-100 p-4">
+                <div className="bg-white p-8 rounded-lg shadow-lg w-full max-w-md border-t-4 border-primary">
+                    <div className="text-center mb-8">
+                        <h1 className="text-2xl font-bold text-primary mb-2">114學年度 簡報達人擂台賽</h1>
+                        <p className="text-gray-500 font-medium">評審評分系統</p>
+                    </div>
+                    {error && (
+                        <div className="mb-4 p-3 bg-red-50 text-red-700 text-sm rounded border border-red-200 flex items-center">
+                            <span className="material-icons text-sm mr-2">error</span>
+                            {error}
                         </div>
-
-                        {error && (
-                            <div className="mb-4 p-3 bg-red-50 text-red-700 text-sm rounded border border-red-200 flex items-center">
-                                <span className="material-icons text-sm mr-2">error</span>
-                                {error}
+                    )}
+                    <form onSubmit={handleLogin} className="space-y-6">
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-1">登入身分</label>
+                            <div className="relative">
+                                <span className="material-icons absolute left-3 top-3 text-gray-400 text-sm">badge</span>
+                                <select 
+                                    value={userType}
+                                    onChange={handleUserTypeChange}
+                                    className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-secondary focus:border-secondary bg-white"
+                                >
+                                    <option value="judge">評審委員 (Judge)</option>
+                                    <option value="admin">系統管理員 (Admin)</option>
+                                </select>
                             </div>
-                        )}
-
-                        <form onSubmit={handleLogin} className="space-y-6">
+                        </div>
+                        {userType === 'judge' && (
                             <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1">登入身分</label>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">
+                                    評審姓名
+                                    {isListLoading && <span className="text-xs text-gray-400 ml-2">(資料載入中...)</span>}
+                                </label>
                                 <div className="relative">
-                                    <span className="material-icons absolute left-3 top-3 text-gray-400 text-sm">badge</span>
+                                    <span className="material-icons absolute left-3 top-3 text-gray-400 text-sm">person</span>
                                     <select 
-                                        value={userType}
-                                        onChange={handleUserTypeChange}
+                                        name="id" 
+                                        value={formData.id} 
+                                        onChange={handleChange} 
                                         className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-secondary focus:border-secondary bg-white"
+                                        disabled={isListLoading}
                                     >
-                                        <option value="judge">評審委員 (Judge)</option>
-                                        <option value="admin">系統管理員 (Admin)</option>
+                                        <option value="">{isListLoading ? "讀取中..." : "請選擇您的姓名..."}</option>
+                                        {judgeList.length > 0 ? (
+                                            judgeList.map((judge) => (
+                                                <option key={judge.id} value={judge.id}>{judge.name}</option>
+                                            ))
+                                        ) : (
+                                            !isListLoading && <option value="" disabled>無可用名單</option>
+                                        )}
                                     </select>
                                 </div>
                             </div>
-
-                            {userType === 'judge' && (
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                                        評審姓名
-                                        {isListLoading && <span className="text-xs text-gray-400 ml-2">(資料載入中...)</span>}
-                                    </label>
-                                    <div className="relative">
-                                        <span className="material-icons absolute left-3 top-3 text-gray-400 text-sm">person</span>
-                                        <select 
-                                            name="id" 
-                                            value={formData.id} 
-                                            onChange={handleChange} 
-                                            className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-secondary focus:border-secondary bg-white"
-                                            disabled={isListLoading}
-                                        >
-                                            <option value="">{isListLoading ? "讀取中..." : "請選擇您的姓名..."}</option>
-                                            {judgeList.length > 0 ? (
-                                                judgeList.map((judge) => (
-                                                    <option key={judge.id} value={judge.id}>{judge.name}</option>
-                                                ))
-                                            ) : (
-                                                !isListLoading && <option value="" disabled>無可用名單</option>
-                                            )}
-                                        </select>
-                                    </div>
-                                </div>
-                            )}
-
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1">
-                                    {userType === 'admin' ? '管理員密碼' : '登入密碼'}
-                                </label>
-                                <div className="relative">
-                                    <span className="material-icons absolute left-3 top-3 text-gray-400 text-sm">lock</span>
-                                    <input
-                                        type="password"
-                                        name="password"
-                                        value={formData.password}
-                                        onChange={handleChange}
-                                        placeholder="請輸入密碼"
-                                        className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-secondary focus:border-secondary"
-                                    />
-                                </div>
+                        )}
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-1">
+                                {userType === 'admin' ? '管理員密碼' : '登入密碼'}
+                            </label>
+                            <div className="relative">
+                                <span className="material-icons absolute left-3 top-3 text-gray-400 text-sm">lock</span>
+                                <input
+                                    type="password"
+                                    name="password"
+                                    value={formData.password}
+                                    onChange={handleChange}
+                                    placeholder="請輸入密碼"
+                                    className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-secondary focus:border-secondary"
+                                />
                             </div>
-
-                            <button 
-                                type="submit"
-                                disabled={loading}
-                                className={`w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white transition-colors
-                                    ${loading ? 'bg-gray-400 cursor-not-allowed' : 'bg-secondary hover:bg-orange-700'}
-                                `}
-                            >
-                                {loading ? "登入驗證中..." : "登入系統"}
-                            </button>
-                        </form>
-                    </div>
+                        </div>
+                        <button 
+                            type="submit"
+                            disabled={loading}
+                            className={`w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white transition-colors
+                                ${loading ? 'bg-gray-400 cursor-not-allowed' : 'bg-secondary hover:bg-orange-700'}
+                            `}
+                        >
+                            {loading ? "登入驗證中..." : "登入系統"}
+                        </button>
+                    </form>
                 </div>
-            );
-        };
+            </div>
+        );
+    };
 
-// --- 核心功能：評審管理元件 (JudgeManager) ---
+    // --- 核心功能：評審管理元件 (JudgeManager) ---
     const JudgeManager = () => {
         const [judges, setJudges] = useState([]);
         const [isLoading, setIsLoading] = useState(false);
@@ -274,10 +268,11 @@
             id: '',
             name: '',
             password: '',
-            categories: [] // Array
+            categories: [], // Array
+            year: '' // 用來記錄編輯時的年份，供內部參考
         });
 
-        // 1. 讀取評審資料 (Read)
+        // 1. 讀取評審資料 (Read & Sort)
         const fetchJudges = async () => {
             setIsLoading(true);
             try {
@@ -290,9 +285,14 @@
                 });
                 const result = await response.json();
                 if (result.status === 'success') {
-                    // ★ 除錯用：印出後端回傳的原始資料結構
-                    console.log('API Judges Data:', result.data);
-                    setJudges(result.data);
+                    // 資料排序：年度降序 (最新的在上面)
+                    const sortedData = result.data.sort((a, b) => {
+                        const yearA = a.competition_year || a.year || 0;
+                        const yearB = b.competition_year || b.year || 0;
+                        return yearB - yearA; 
+                    });
+                    setJudges(sortedData);
+                    console.log('Judges Loaded:', sortedData);
                 } else {
                     alert("讀取失敗：" + result.message);
                 }
@@ -308,44 +308,79 @@
             fetchJudges();
         }, []);
 
-        // 2. 開啟 Modal (新增/編輯)
+        // 2. 刪除資料 (Delete)
+        const handleDelete = async (judge) => {
+            const judgeName = judge.judge_name || judge.name;
+            const confirmDelete = window.confirm(`確定要刪除評審「${judgeName}」嗎？\n此動作無法復原。`);
+            
+            if (!confirmDelete) return;
+
+            // 取得正確的識別參數
+            const targetCode = judge.judge_code || judge.id;
+            const targetYear = judge.competition_year || judge.year;
+
+            setIsLoading(true); // 顯示全域 Loading
+            try {
+                const response = await fetch(API_URL, {
+                    method: 'POST',
+                    body: JSON.stringify({
+                        action: 'deleteJudge',
+                        API_Key: API_KEY,
+                        judge_code: targetCode,
+                        competition_year: targetYear
+                    })
+                });
+                const result = await response.json();
+                if (result.status === 'success') {
+                    alert('刪除成功');
+                    fetchJudges(); // 重新整理列表
+                } else {
+                    alert('刪除失敗：' + result.message);
+                    setIsLoading(false);
+                }
+            } catch (err) {
+                console.error(err);
+                alert('刪除時發生錯誤');
+                setIsLoading(false);
+            }
+        };
+
+        // 3. 開啟 Modal (新增/編輯)
         const openModal = (mode, judge = null) => {
             setModalMode(mode);
             if (mode === 'edit' && judge) {
-                // ★ 修正：加入欄位 fallback 邏輯，優先讀取 judge_code / judge_name
                 setFormData({
                     id: judge.judge_code || judge.id,
                     name: judge.judge_name || judge.name,
                     password: judge.password || '', 
-                    categories: Array.isArray(judge.categories) ? judge.categories : []
+                    categories: Array.isArray(judge.categories) ? judge.categories : [],
+                    year: judge.competition_year || judge.year // 保留年份資料
                 });
             } else {
-                setFormData({ id: '', name: '', password: '', categories: [] });
+                setFormData({ id: '', name: '', password: '', categories: [], year: '' });
             }
             setIsModalOpen(true);
         };
 
-        // 3. 表單欄位變更
+        // 4. 表單欄位變更
         const handleInputChange = (e) => {
             const { name, value } = e.target;
             setFormData(prev => ({ ...prev, [name]: value }));
         };
 
-        // 4. Checkbox 勾選邏輯
+        // 5. Checkbox 勾選邏輯
         const handleCategoryToggle = (category) => {
             setFormData(prev => {
                 const currentCats = prev.categories || [];
                 if (currentCats.includes(category)) {
-                    // 取消勾選 (移除)
                     return { ...prev, categories: currentCats.filter(c => c !== category) };
                 } else {
-                    // 勾選 (加入)
                     return { ...prev, categories: [...currentCats, category] };
                 }
             });
         };
 
-        // 5. 儲存資料 (Write)
+        // 6. 儲存資料 (Save)
         const handleSave = async () => {
             if (!formData.id || !formData.name || !formData.password) {
                 alert("代碼、姓名與密碼為必填欄位！");
@@ -360,7 +395,8 @@
                     judge_code: formData.id,
                     judge_name: formData.name,
                     password: formData.password,
-                    categories: formData.categories 
+                    categories: formData.categories // Array
+                    // 注意：這裡我們不傳 competition_year，交由後端處理 (新增時為今年，編輯時後端應保留原年份或更新)
                 };
 
                 const response = await fetch(API_URL, {
@@ -404,44 +440,55 @@
                     <table className="min-w-full divide-y divide-gray-200 border">
                         <thead className="bg-gray-50">
                             <tr>
-                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">代碼 (ID)</th>
+                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">年度</th>
+                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">代碼</th>
                                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">姓名</th>
                                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">負責組別</th>
+                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">密碼</th>
                                 <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">操作</th>
                             </tr>
                         </thead>
                         <tbody className="bg-white divide-y divide-gray-200">
                             {isLoading ? (
-                                <tr><td colSpan="4" className="px-6 py-4 text-center text-gray-500">載入中...</td></tr>
+                                <tr><td colSpan="6" className="px-6 py-4 text-center text-gray-500">載入中...</td></tr>
                             ) : judges.length === 0 ? (
-                                <tr><td colSpan="4" className="px-6 py-4 text-center text-gray-500">目前沒有評審資料</td></tr>
+                                <tr><td colSpan="6" className="px-6 py-4 text-center text-gray-500">目前沒有評審資料</td></tr>
                             ) : (
                                 judges.map((judge, index) => {
-                                    // ★ 在這裡處理欄位名稱相容性
+                                    // 欄位 fallback 處理
+                                    const displayYear = judge.competition_year || judge.year || '-';
                                     const displayId = judge.judge_code || judge.id || 'N/A';
                                     const displayName = judge.judge_name || judge.name || '未命名';
                                     
                                     return (
                                         <tr key={displayId + index} className="hover:bg-gray-50">
-                                            <td className="px-6 py-4 whitespace-nowrap text-sm font-mono text-gray-900">
-                                                {displayId}
-                                            </td>
-                                            <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                                                {displayName}
-                                            </td>
+                                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{displayYear}</td>
+                                            <td className="px-6 py-4 whitespace-nowrap text-sm font-mono text-gray-900">{displayId}</td>
+                                            <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{displayName}</td>
                                             <td className="px-6 py-4 text-sm text-gray-600">
                                                 {judge.categories && judge.categories.length > 0 
                                                     ? judge.categories.join('、') 
                                                     : <span className="text-gray-400">未指定</span>
                                                 }
                                             </td>
+                                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-400">******</td>
                                             <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                                                <button 
-                                                    onClick={() => openModal('edit', judge)}
-                                                    className="text-primary hover:text-indigo-900 font-bold"
-                                                >
-                                                    編輯
-                                                </button>
+                                                <div className="flex justify-end space-x-3">
+                                                    <button 
+                                                        onClick={() => openModal('edit', judge)}
+                                                        className="text-blue-600 hover:text-blue-900 flex items-center"
+                                                        title="編輯"
+                                                    >
+                                                        <span className="material-icons text-lg">edit</span>
+                                                    </button>
+                                                    <button 
+                                                        onClick={() => handleDelete(judge)}
+                                                        className="text-red-600 hover:text-red-900 flex items-center"
+                                                        title="刪除"
+                                                    >
+                                                        <span className="material-icons text-lg">delete</span>
+                                                    </button>
+                                                </div>
                                             </td>
                                         </tr>
                                     );
@@ -549,112 +596,113 @@
             </div>
         );
     };
-        // --- 管理員後台框架 (AdminDashboard) ---
-        const AdminDashboard = ({ user, onLogout }) => {
-            return (
-                <div className="min-h-screen bg-gray-100">
-                    {/* Top Navbar */}
-                    <nav className="bg-primary shadow-lg">
-                        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-                            <div className="flex justify-between h-16">
-                                <div className="flex items-center">
-                                    <span className="material-icons text-white mr-2">admin_panel_settings</span>
-                                    <span className="font-bold text-xl text-white">管理員後台</span>
-                                </div>
-                                <div className="flex items-center space-x-4">
-                                    <span className="text-gray-200 text-sm hidden sm:block">Hello, Admin</span>
-                                    <button 
-                                        onClick={onLogout}
-                                        className="bg-gray-800 text-gray-300 hover:text-white px-3 py-1 rounded text-sm transition"
-                                    >
-                                        登出
-                                    </button>
-                                </div>
+
+    // --- 管理員後台框架 (AdminDashboard) ---
+    const AdminDashboard = ({ user, onLogout }) => {
+        return (
+            <div className="min-h-screen bg-gray-100">
+                {/* Top Navbar */}
+                <nav className="bg-primary shadow-lg">
+                    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+                        <div className="flex justify-between h-16">
+                            <div className="flex items-center">
+                                <span className="material-icons text-white mr-2">admin_panel_settings</span>
+                                <span className="font-bold text-xl text-white">管理員後台</span>
+                            </div>
+                            <div className="flex items-center space-x-4">
+                                <span className="text-gray-200 text-sm hidden sm:block">Hello, Admin</span>
+                                <button 
+                                    onClick={onLogout}
+                                    className="bg-gray-800 text-gray-300 hover:text-white px-3 py-1 rounded text-sm transition"
+                                >
+                                    登出
+                                </button>
                             </div>
                         </div>
-                    </nav>
+                    </div>
+                </nav>
 
-                    {/* Main Content Area */}
-                    <main className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
-                        {/* 這裡載入評審管理元件 */}
-                        <JudgeManager />
-                    </main>
+                {/* Main Content Area */}
+                <main className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
+                    {/* 這裡載入評審管理元件 */}
+                    <JudgeManager />
+                </main>
+            </div>
+        );
+    };
+
+    // --- 主程式 App ---
+    const App = () => {
+        const [user, setUser] = useState(null);
+
+        useEffect(() => {
+            const storedUser = localStorage.getItem('currentUser');
+            if (storedUser) {
+                try {
+                    setUser(JSON.parse(storedUser));
+                } catch (e) {
+                    localStorage.removeItem('currentUser');
+                }
+            }
+        }, []);
+
+        const handleLogout = () => {
+            localStorage.removeItem('currentUser');
+            setUser(null);
+        };
+
+        // 根據 user.role 路由
+        const renderContent = () => {
+            if (!user) {
+                return <Login onLoginSuccess={setUser} />;
+            }
+
+            // 若是管理員 -> AdminDashboard
+            if (user.role === 'admin') {
+                return <AdminDashboard user={user} onLogout={handleLogout} />;
+            }
+
+            // 若是評審 -> 原本的歡迎畫面 (之後會開發評審儀表板)
+            return (
+                <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center">
+                    <div className="bg-white p-8 rounded shadow text-center border-t-4 border-secondary">
+                        <h2 className="text-2xl font-bold text-primary mb-4">歡迎回來！</h2>
+                        <p className="text-lg mb-2 font-medium">{user.judge_name} 老師</p>
+                        <div className="bg-orange-50 p-4 rounded mb-6 text-left">
+                            <p className="text-sm text-gray-500 mb-1">您負責的評分組別：</p>
+                            <div className="flex flex-wrap gap-2">
+                                {user.category ? (
+                                    // 假設這裡後端回傳的是字串，先 split 處理，若已是陣列則直接用
+                                    (Array.isArray(user.category) ? user.category : user.category.split(',')).map(c => (
+                                        <span key={c} className="bg-white border border-secondary text-secondary px-2 py-1 rounded text-sm">
+                                            {c}
+                                        </span>
+                                    ))
+                                ) : (
+                                    <span className="text-gray-400">尚未分配</span>
+                                )}
+                            </div>
+                        </div>
+                        <button 
+                            onClick={handleLogout}
+                            className="px-6 py-2 bg-gray-200 text-gray-700 rounded hover:bg-gray-300 transition"
+                        >
+                            登出系統
+                        </button>
+                    </div>
                 </div>
             );
         };
 
-        // --- 主程式 App ---
-        const App = () => {
-            const [user, setUser] = useState(null);
+        return (
+            <React.StrictMode>
+                {renderContent()}
+            </React.StrictMode>
+        );
+    };
 
-            useEffect(() => {
-                const storedUser = localStorage.getItem('currentUser');
-                if (storedUser) {
-                    try {
-                        setUser(JSON.parse(storedUser));
-                    } catch (e) {
-                        localStorage.removeItem('currentUser');
-                    }
-                }
-            }, []);
-
-            const handleLogout = () => {
-                localStorage.removeItem('currentUser');
-                setUser(null);
-            };
-
-            // 根據 user.role 路由
-            const renderContent = () => {
-                if (!user) {
-                    return <Login onLoginSuccess={setUser} />;
-                }
-
-                // 若是管理員 -> AdminDashboard
-                if (user.role === 'admin') {
-                    return <AdminDashboard user={user} onLogout={handleLogout} />;
-                }
-
-                // 若是評審 -> 原本的歡迎畫面 (之後會開發評審儀表板)
-                return (
-                    <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center">
-                        <div className="bg-white p-8 rounded shadow text-center border-t-4 border-secondary">
-                            <h2 className="text-2xl font-bold text-primary mb-4">歡迎回來！</h2>
-                            <p className="text-lg mb-2 font-medium">{user.judge_name} 老師</p>
-                            <div className="bg-orange-50 p-4 rounded mb-6 text-left">
-                                <p className="text-sm text-gray-500 mb-1">您負責的評分組別：</p>
-                                <div className="flex flex-wrap gap-2">
-                                    {user.category ? (
-                                        // 假設這裡後端回傳的是字串，先 split 處理，若已是陣列則直接用
-                                        (Array.isArray(user.category) ? user.category : user.category.split(',')).map(c => (
-                                            <span key={c} className="bg-white border border-secondary text-secondary px-2 py-1 rounded text-sm">
-                                                {c}
-                                            </span>
-                                        ))
-                                    ) : (
-                                        <span className="text-gray-400">尚未分配</span>
-                                    )}
-                                </div>
-                            </div>
-                            <button 
-                                onClick={handleLogout}
-                                className="px-6 py-2 bg-gray-200 text-gray-700 rounded hover:bg-gray-300 transition"
-                            >
-                                登出系統
-                            </button>
-                        </div>
-                    </div>
-                );
-            };
-
-            return (
-                <React.StrictMode>
-                    {renderContent()}
-                </React.StrictMode>
-            );
-        };
-
-        const root = ReactDOM.createRoot(document.getElementById('root'));
-        root.render(<App />);
-    </script>
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(<App />);
+</script>
 </body>
 </html>
