@@ -597,15 +597,19 @@
         );
     };
 
-// --- 隊伍資源管理元件 (TeamManager) ---
+// --- 隊伍資源管理元件 (TeamManager) ---jan 24 2109 更新UI
     const TeamManager = () => {
         const [teams, setTeams] = useState([]);
         const [isLoading, setIsLoading] = useState(false);
         
+        // --- 新增：搜尋與篩選 State ---
+        const [searchTerm, setSearchTerm] = useState('');
+        const [filterGroup, setFilterGroup] = useState('All');
+
         // Modal 相關狀態
         const [isModalOpen, setIsModalOpen] = useState(false);
         const [modalMode, setModalMode] = useState('add');
-        const [activeModalTab, setActiveModalTab] = useState('basic'); // basic, personnel, contact, resources
+        const [activeModalTab, setActiveModalTab] = useState('basic'); 
         const [isSaving, setIsSaving] = useState(false);
 
         // 初始表單狀態
@@ -621,22 +625,14 @@
                 memo: ''
             },
             students: [
-                { name: '', email: '' },
-                { name: '', email: '' },
-                { name: '', email: '' }
+                { name: '', email: '' }, { name: '', email: '' }, { name: '', email: '' }
             ],
             teachers: [
-                { name: '', email: '' },
-                { name: '', email: '' }
+                { name: '', email: '' }, { name: '', email: '' }
             ],
             contact: { name: '', phone: '' },
             links: {
-                mindmap: '',
-                slides: '',
-                video: '',
-                consent: '',
-                drive: '',
-                link_note: ''
+                mindmap: '', slides: '', video: '', consent: '', drive: '', link_note: ''
             }
         };
 
@@ -652,14 +648,11 @@
                 });
                 const result = await response.json();
                 if (result.status === 'success') {
-                    // ★ 除錯：印出第一筆資料，檢查欄位名稱 (按 F12 看 Console)
-                    if (result.data && result.data.length > 0) {
-                        console.log('第一筆隊伍資料 (Debug):', result.data[0]);
-                    }
-
-                    // 依照 category 排序
+                    // 依照 category (或 group_name) 排序
                     const sorted = result.data.sort((a, b) => {
-                        return (a.category || '').localeCompare(b.category || '');
+                        const valA = a.basic?.group_name || a.group_name || '';
+                        const valB = b.basic?.group_name || b.group_name || '';
+                        return valA.localeCompare(valB);
                     });
                     setTeams(sorted);
                 } else {
@@ -677,7 +670,43 @@
             fetchTeams();
         }, []);
 
-        // 2. 處理表單變更
+        // --- 新增：計算邏輯 (Filter & Search) ---
+        
+        // 1. 提取所有不重複的 group_name 供下拉選單使用
+        const uniqueGroups = [...new Set(teams.map(t => 
+            t.basic?.group_name || t.group_name || ''
+        ))].filter(Boolean).sort();
+
+        // 2. 篩選資料
+        const filteredTeams = teams.filter(team => {
+            // 準備比對用的資料欄位
+            const group = team.basic?.group_name || team.group_name || '';
+            const school = team.basic?.school || team.school || '';
+            const workTitle = team.basic?.work_title || team.work_title || '';
+            const category = team.basic?.category || team.category || ''; // 額外搜尋原本的 category 欄位以防萬一
+
+            // 第一層：下拉篩選
+            if (filterGroup !== 'All' && group !== filterGroup) {
+                return false;
+            }
+
+            // 第二層：關鍵字搜尋
+            if (searchTerm) {
+                const lowerTerm = searchTerm.toLowerCase();
+                return (
+                    school.toLowerCase().includes(lowerTerm) ||
+                    workTitle.toLowerCase().includes(lowerTerm) ||
+                    group.toLowerCase().includes(lowerTerm) ||
+                    category.toLowerCase().includes(lowerTerm)
+                );
+            }
+
+            return true;
+        });
+
+
+        // ... (以下為原本的 Modal 與 CRUD 邏輯，保持不變) ...
+
         const handleBasicChange = (e) => {
             const { name, value } = e.target;
             setFormData(prev => ({ ...prev, basic: { ...prev.basic, [name]: value } }));
@@ -713,7 +742,6 @@
             }
         };
 
-        // 3. 開啟 Modal
         const openModal = (mode, team = null) => {
             setModalMode(mode);
             setActiveModalTab('basic');
@@ -722,7 +750,6 @@
                 setFormData({
                     team_id: team.team_id || team.id || '',
                     basic: {
-                        // ★ 這裡也加上讀取容錯，確保編輯時年份能帶入
                         year: team.basic?.year || team.Competition_Year || team.year || (new Date().getFullYear() - 1911),
                         category: team.basic?.category || team.category || ALL_CATEGORIES[0],
                         school: team.basic?.school || team.school || '',
@@ -758,7 +785,6 @@
             setIsModalOpen(true);
         };
 
-        // 4. 儲存
         const handleSave = async () => {
             if (!formData.basic.year || !formData.basic.school || !formData.basic.group_name) {
                 alert("請填寫年度、學校與隊名等基本資料");
@@ -792,7 +818,6 @@
             }
         };
 
-        // 5. 刪除
         const handleDelete = async (teamId, teamName) => {
             if (!confirm(`確定要刪除隊伍「${teamName}」嗎？此動作無法復原。`)) return;
 
@@ -823,6 +848,7 @@
 
         return (
             <div className="bg-white rounded shadow-md p-6 mt-6">
+                {/* Header & Add Button */}
                 <div className="flex justify-between items-center mb-6">
                     <h2 className="text-xl font-bold text-gray-800 flex items-center">
                         <span className="material-icons mr-2 text-primary">groups</span>
@@ -837,38 +863,63 @@
                     </button>
                 </div>
 
-{/* Table List */}
-                <div className="overflow-x-auto">
-                    <table className="min-w-full divide-y divide-gray-200 border">
+                {/* --- 新增：搜尋與篩選工具列 --- */}
+                <div className="flex flex-col sm:flex-row gap-4 mb-4 bg-gray-50 p-4 rounded border">
+                    <div className="flex-1 relative">
+                        <span className="material-icons absolute left-3 top-2.5 text-gray-400">search</span>
+                        <input 
+                            type="text" 
+                            placeholder="搜尋學校、隊名或作品..." 
+                            value={searchTerm}
+                            onChange={(e) => setSearchTerm(e.target.value)}
+                            className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-md focus:ring-secondary focus:border-secondary"
+                        />
+                    </div>
+                    <div className="sm:w-1/4">
+                        <select 
+                            value={filterGroup}
+                            onChange={(e) => setFilterGroup(e.target.value)}
+                            className="w-full py-2 px-3 border border-gray-300 rounded-md focus:ring-secondary focus:border-secondary bg-white"
+                        >
+                            <option value="All">全部組別 (Group)</option>
+                            {uniqueGroups.map(group => (
+                                <option key={group} value={group}>{group}</option>
+                            ))}
+                        </select>
+                    </div>
+                </div>
+
+                {/* Table List (包含固定高度與 Sticky Header) */}
+                <div className="max-h-[600px] overflow-y-auto border rounded-lg shadow relative">
+                    <table className="min-w-full divide-y divide-gray-200">
                         <thead className="bg-gray-50">
                             <tr>
-                                <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase whitespace-nowrap">年度</th>
-                                <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase whitespace-nowrap">參賽組別</th>
-                                <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase whitespace-nowrap">學校</th>
-                                <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase whitespace-nowrap">作品名稱</th>
-                                <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase whitespace-nowrap">作品說明</th>
-                                {/* 連結區塊 - 縮減寬度 */}
-                                <th className="px-2 py-3 text-center text-xs font-medium text-gray-500 uppercase whitespace-nowrap">心智圖</th>
-                                <th className="px-2 py-3 text-center text-xs font-medium text-gray-500 uppercase whitespace-nowrap">簡報</th>
-                                <th className="px-2 py-3 text-center text-xs font-medium text-gray-500 uppercase whitespace-nowrap">影片</th>
-                                <th className="px-2 py-3 text-center text-xs font-medium text-gray-500 uppercase whitespace-nowrap">雲端</th>
-                                <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase whitespace-nowrap">備註</th>
-                                <th className="px-3 py-3 text-right text-xs font-medium text-gray-500 uppercase whitespace-nowrap">操作</th>
+                                <th className="sticky top-0 bg-gray-100 z-10 px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase whitespace-nowrap shadow-sm">年度</th>
+                                <th className="sticky top-0 bg-gray-100 z-10 px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase whitespace-nowrap shadow-sm">參賽組別</th>
+                                <th className="sticky top-0 bg-gray-100 z-10 px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase whitespace-nowrap shadow-sm">學校</th>
+                                <th className="sticky top-0 bg-gray-100 z-10 px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase whitespace-nowrap shadow-sm">作品名稱</th>
+                                <th className="sticky top-0 bg-gray-100 z-10 px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase whitespace-nowrap shadow-sm">作品說明</th>
+                                {/* 連結區塊 */}
+                                <th className="sticky top-0 bg-gray-100 z-10 px-2 py-3 text-center text-xs font-medium text-gray-500 uppercase whitespace-nowrap shadow-sm">心智圖</th>
+                                <th className="sticky top-0 bg-gray-100 z-10 px-2 py-3 text-center text-xs font-medium text-gray-500 uppercase whitespace-nowrap shadow-sm">簡報</th>
+                                <th className="sticky top-0 bg-gray-100 z-10 px-2 py-3 text-center text-xs font-medium text-gray-500 uppercase whitespace-nowrap shadow-sm">影片</th>
+                                <th className="sticky top-0 bg-gray-100 z-10 px-2 py-3 text-center text-xs font-medium text-gray-500 uppercase whitespace-nowrap shadow-sm">雲端</th>
+                                <th className="sticky top-0 bg-gray-100 z-10 px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase whitespace-nowrap shadow-sm">備註</th>
+                                <th className="sticky top-0 bg-gray-100 z-10 px-3 py-3 text-right text-xs font-medium text-gray-500 uppercase whitespace-nowrap shadow-sm">操作</th>
                             </tr>
                         </thead>
                         <tbody className="bg-white divide-y divide-gray-200">
                             {isLoading ? (
                                 <tr><td colSpan="11" className="px-6 py-4 text-center text-gray-500">載入中...</td></tr>
-                            ) : teams.length === 0 ? (
-                                <tr><td colSpan="11" className="px-6 py-4 text-center text-gray-500">無參賽隊伍資料</td></tr>
+                            ) : filteredTeams.length === 0 ? (
+                                <tr><td colSpan="11" className="px-6 py-4 text-center text-gray-500">
+                                    {searchTerm || filterGroup !== 'All' ? '找不到符合條件的隊伍' : '目前無參賽隊伍資料'}
+                                </td></tr>
                             ) : (
-                                teams.map((team, idx) => {
+                                filteredTeams.map((team, idx) => {
                                     // 資料讀取容錯
                                     const displayYear = team.basic?.year || team.Competition_Year || team.year || '114';
-                                    
-                                    // ★ 關鍵修正：表頭為「參賽組別」，但讀取的是 group_name (隊名)
                                     const displayGroup = team.basic?.group_name || team.group_name || '';
-                                    
                                     const school = team.basic?.school || team.school || '';
                                     const workTitle = team.basic?.work_title || team.work_title || '';
                                     const description = team.basic?.description || team.description || '';
@@ -880,7 +931,6 @@
                                     const linkVideo = team.links?.video || team.link_video;
                                     const linkDrive = team.links?.drive || team.link_drive;
 
-                                    // 輔助函式：渲染連結按鈕
                                     const renderLink = (url, icon) => {
                                         if (!url) return <span className="text-gray-300">-</span>;
                                         return (
@@ -892,37 +942,16 @@
 
                                     return (
                                         <tr key={team.team_id || idx} className="hover:bg-gray-50">
-                                            {/* 1. 年度 */}
                                             <td className="px-3 py-4 whitespace-nowrap text-sm text-gray-900">{displayYear}</td>
-                                            
-                                            {/* 2. 參賽組別 (讀取 group_name) */}
                                             <td className="px-3 py-4 whitespace-nowrap text-sm text-gray-900 font-medium">{displayGroup}</td>
-                                            
-                                            {/* 3. 學校 */}
                                             <td className="px-3 py-4 whitespace-nowrap text-sm text-gray-500">{school}</td>
-                                            
-                                            {/* 4. 作品名稱 */}
-                                            <td className="px-3 py-4 text-sm text-gray-900 max-w-[150px] truncate" title={workTitle}>
-                                                {workTitle}
-                                            </td>
-                                            
-                                            {/* 5. 作品說明 */}
-                                            <td className="px-3 py-4 text-sm text-gray-500 max-w-[200px] truncate" title={description}>
-                                                {description}
-                                            </td>
-
-                                            {/* 6-9. 連結區 */}
+                                            <td className="px-3 py-4 text-sm text-gray-900 max-w-[150px] truncate" title={workTitle}>{workTitle}</td>
+                                            <td className="px-3 py-4 text-sm text-gray-500 max-w-[200px] truncate" title={description}>{description}</td>
                                             <td className="px-2 py-4 text-center">{renderLink(linkMindmap, 'psychology')}</td>
                                             <td className="px-2 py-4 text-center">{renderLink(linkSlides, 'slideshow')}</td>
                                             <td className="px-2 py-4 text-center">{renderLink(linkVideo, 'movie')}</td>
                                             <td className="px-2 py-4 text-center">{renderLink(linkDrive, 'folder')}</td>
-
-                                            {/* 10. 備註 */}
-                                            <td className="px-3 py-4 text-sm text-gray-500 max-w-[100px] truncate" title={memo}>
-                                                {memo}
-                                            </td>
-
-                                            {/* 11. 操作 */}
+                                            <td className="px-3 py-4 text-sm text-gray-500 max-w-[100px] truncate" title={memo}>{memo}</td>
                                             <td className="px-3 py-4 whitespace-nowrap text-right text-sm font-medium">
                                                 <button onClick={() => openModal('edit', team)} className="text-blue-600 hover:text-blue-900 mr-2" title="編輯">
                                                     <span className="material-icons text-base">edit</span>
@@ -938,7 +967,6 @@
                         </tbody>
                     </table>
                 </div>
-                
                 {/* Edit Modal */}
                 {isModalOpen && (
                     <div className="fixed inset-0 z-50 overflow-y-auto">
