@@ -663,29 +663,44 @@
         const [modalMode, setModalMode] = useState('add');
         const [activeModalTab, setActiveModalTab] = useState('basic'); 
         const [isSaving, setIsSaving] = useState(false);
+        const [editingTeam, setEditingTeam] = useState(null); // 紀錄目前編輯的原始物件
 
-        // 初始表單狀態
+        // 初始表單狀態 (扁平化結構)
         const initialFormState = {
-            team_id: '',
-            basic: {
-                year: new Date().getFullYear() - 1911,
-                category: ALL_CATEGORIES[0],
-                school: '',
-                group_name: '',
-                work_title: '',
-                description: '',
-                memo: ''
-            },
-            students: [
-                { name: '', email: '' }, { name: '', email: '' }, { name: '', email: '' }
-            ],
-            teachers: [
-                { name: '', email: '' }, { name: '', email: '' }
-            ],
-            contact: { name: '', phone: '' },
-            links: {
-                mindmap: '', slides: '', video: '', consent: '', drive: '', link_note: ''
-            }
+            Team_ID: '',
+            Competition_Year: (new Date().getFullYear() - 1911).toString(),
+            
+            // 基本資料
+            Group_Name: ALL_CATEGORIES[0], // 對應「參賽組別」
+            Team_Name: '',                 // 對應「隊名」
+            School: '',
+            Work_Title: '',
+            Description: '',
+            Category: '', // 保留欄位，若後端需要
+            
+            // 學生資料
+            Student1_Name: '', Student1_Email: '',
+            Student2_Name: '', Student2_Email: '',
+            Student3_Name: '', Student3_Email: '',
+            
+            // 老師資料
+            Teacher1_Name: '', Teacher1_Email: '',
+            Teacher2_Name: '', Teacher2_Email: '',
+            
+            // 聯絡人
+            Contact_Person: '',
+            Contact_Phone: '',
+            
+            // 連結
+            MindMap_Link: '',
+            Slides_Link: '',
+            Video_Link: '',
+            Consent_Link: '',
+            Drive_Link: '',
+            
+            // 備註
+            Link_Note: '',
+            Memo: ''
         };
 
         const [formData, setFormData] = useState(initialFormState);
@@ -702,9 +717,7 @@
                 if (result.status === 'success') {
                     // 依照 Group_Name 排序
                     const sorted = result.data.sort((a, b) => {
-                        const valA = a.Group_Name || '';
-                        const valB = b.Group_Name || '';
-                        return valA.localeCompare(valB);
+                        return (a.Group_Name || '').localeCompare(b.Group_Name || '');
                     });
                     setTeams(sorted);
                 } else {
@@ -722,7 +735,7 @@
             fetchTeams();
         }, []);
 
-        // --- 搜尋邏輯核心 (Recursive Deep Search) ---
+        // --- 搜尋與篩選邏輯 ---
         const getDeepString = (obj) => {
             if (!obj) return '';
             if (typeof obj === 'string' || typeof obj === 'number') return String(obj).toLowerCase();
@@ -732,124 +745,117 @@
             return '';
         };
 
-        // --- Step A: 計算唯一組別 (修復篩選選單) ---
-        // 從扁平化後的 teams 資料中提取 Group_Name
         const uniqueGroups = [...new Set(teams.map(t => t.Group_Name).filter(Boolean))].sort();
 
-        // 計算篩選後的資料
         const filteredTeams = teams.filter(team => {
-            // 1. 下拉篩選
-            const group = team.Group_Name || '';
-            if (filterGroup !== 'All' && group !== filterGroup) {
-                return false;
-            }
-            // 2. 關鍵字搜尋
+            if (filterGroup !== 'All' && team.Group_Name !== filterGroup) return false;
             if (!searchTerm) return true;
-            const fullDataString = getDeepString(team);
-            return fullDataString.includes(searchTerm.toLowerCase());
+            return getDeepString(team).includes(searchTerm.toLowerCase());
         });
 
-        // --- Step B: 新增顏色判斷函式 (Group Color Coding) ---
         const getGroupColor = (groupName) => {
-            if (!groupName) return 'bg-gray-100 text-gray-800'; // 預設灰
-            
+            if (!groupName) return 'bg-gray-100 text-gray-800';
             const name = groupName.toString();
-            
-            if (name.includes('宜蘭')) return 'bg-green-100 text-green-800';  // 宜蘭在地 -> 綠色
-            if (name.includes('環境')) return 'bg-blue-100 text-blue-800';    // 環境永續 -> 藍色
-            if (name.includes('校訂')) return 'bg-orange-100 text-orange-800'; // 校訂課程 -> 橘色/黃色
-            
-            return 'bg-gray-100 text-gray-800'; // 其他 -> 灰色
+            if (name.includes('宜蘭')) return 'bg-green-100 text-green-800';
+            if (name.includes('環境')) return 'bg-blue-100 text-blue-800';
+            if (name.includes('校訂')) return 'bg-orange-100 text-orange-800';
+            return 'bg-gray-100 text-gray-800';
         };
 
-        // ... (Modal 與 CRUD 邏輯保持不變) ...
-        const handleBasicChange = (e) => {
+        // --- 表單處理邏輯 (Generic Handler) ---
+        // 因為是扁平結構，一個 Handler 搞定所有欄位
+        const handleChange = (e) => {
             const { name, value } = e.target;
-            setFormData(prev => ({ ...prev, basic: { ...prev.basic, [name]: value } }));
+            setFormData(prev => ({ ...prev, [name]: value }));
         };
-        const handleArrayChange = (type, index, field, value) => {
-            setFormData(prev => {
-                const newArray = [...prev[type]]; 
-                newArray[index] = { ...newArray[index], [field]: value };
-                return { ...prev, [type]: newArray };
-            });
-        };
-        const handleContactChange = (e) => {
-            const { name, value } = e.target;
-            setFormData(prev => ({ ...prev, contact: { ...prev.contact, [name]: value } }));
-        };
-        const handleLinkChange = (e) => {
-            const { name, value } = e.target;
-            setFormData(prev => ({ ...prev, links: { ...prev.links, [name]: value } }));
-        };
-        const quickImportContact = (teacherIndex) => {
-            const teacher = formData.teachers[teacherIndex];
-            if (teacher && teacher.name) {
-                setFormData(prev => ({
-                    ...prev,
-                    contact: { ...prev.contact, name: teacher.name }
-                }));
+
+        // 快速帶入聯絡人
+        const quickImportContact = (teacherNum) => {
+            const name = formData[`Teacher${teacherNum}_Name`];
+            if (name) {
+                setFormData(prev => ({ ...prev, Contact_Person: name }));
             } else {
-                alert("該指導老師姓名為空，無法帶入。");
+                alert("該指導老師姓名為空");
             }
         };
 
+        // 2. 開啟 Modal (新增/編輯)
         const openModal = (mode, team = null) => {
             setModalMode(mode);
             setActiveModalTab('basic');
 
             if (mode === 'edit' && team) {
-                // 這裡依然需要將扁平資料 mapping 回結構，以便 Modal 編輯
-                // 注意：這裡假設後端回傳 Key 已是大寫，需小心處理
+                setEditingTeam(team);
+                // ★ 關鍵修改：直接將扁平化的 team 資料塞入 formData，並與預設值合併以防欄位缺失
                 setFormData({
-                    team_id: team.Team_ID || team.id || '',
-                    basic: {
-                        year: team.Competition_Year || team.Year || (new Date().getFullYear() - 1911),
-                        category: team.Group_Name || team.Category || ALL_CATEGORIES[0],
-                        school: team.School || '',
-                        group_name: team.Team_Name || team.Group_Name || '', // 有些欄位可能混用，這裡做 fallback
-                        work_title: team.Work_Title || '',
-                        description: team.Description || '',
-                        memo: team.Memo || ''
-                    },
-                    students: [
-                        { name: team.Student1_Name || '', email: team.Student1_Email || '' },
-                        { name: team.Student2_Name || '', email: team.Student2_Email || '' },
-                        { name: team.Student3_Name || '', email: team.Student3_Email || '' }
-                    ],
-                    teachers: [
-                        { name: team.Teacher1_Name || '', email: team.Teacher1_Email || '' },
-                        { name: team.Teacher2_Name || '', email: team.Teacher2_Email || '' }
-                    ],
-                    contact: {
-                        name: team.Contact_Name || '',
-                        phone: team.Contact_Phone || ''
-                    },
-                    links: {
-                        mindmap: team.Link_Mindmap || team.MindMap_Link || '',
-                        slides: team.Link_Slides || team.Slides_Link || '',
-                        video: team.Link_Video || team.Video_Link || '',
-                        consent: team.Link_Consent || team.Consent_Link || '',
-                        drive: team.Link_Drive || team.Drive_Link || '',
-                        link_note: team.Link_Note || ''
-                    }
+                    ...initialFormState,
+                    ...team // 直接覆蓋
                 });
             } else {
+                setEditingTeam(null);
                 setFormData(initialFormState);
             }
             setIsModalOpen(true);
         };
 
+        // 3. 儲存資料 (handleSave)
         const handleSave = async () => {
-            if (!formData.basic.year || !formData.basic.school) {
-                alert("請填寫年度、學校等基本資料");
+            // 簡易驗證
+            if (!formData.Competition_Year || !formData.School || !formData.Group_Name) {
+                alert("請填寫年度、學校與參賽組別等基本資料");
                 return;
             }
+
             setIsSaving(true);
             try {
-                const payload = { action: 'saveTeam', API_Key: API_KEY, ...formData };
-                const response = await fetch(API_URL, { method: 'POST', body: JSON.stringify(payload) });
+                // ★ 關鍵修改：建立完全符合後端要求的 Payload
+                const payload = {
+                    action: 'saveTeam',
+                    API_Key: API_KEY,
+
+                    // 確保 ID 存在 (編輯時用舊 ID，新增時後端會產)
+                    Team_ID: editingTeam?.Team_ID || '', 
+                    Competition_Year: formData.Competition_Year,
+                    
+                    // 基本資料
+                    Category: formData.Category, // 預留
+                    Group_Name: formData.Group_Name,
+                    Team_Name: formData.Team_Name, // 補上隊名
+                    School: formData.School,
+                    Work_Title: formData.Work_Title,
+                    Description: formData.Description,
+
+                    // 學生資料
+                    Student1_Name: formData.Student1_Name, Student1_Email: formData.Student1_Email,
+                    Student2_Name: formData.Student2_Name, Student2_Email: formData.Student2_Email,
+                    Student3_Name: formData.Student3_Name, Student3_Email: formData.Student3_Email,
+
+                    // 老師資料
+                    Teacher1_Name: formData.Teacher1_Name, Teacher1_Email: formData.Teacher1_Email,
+                    Teacher2_Name: formData.Teacher2_Name, Teacher2_Email: formData.Teacher2_Email,
+
+                    // 其他
+                    Contact_Person: formData.Contact_Person,
+                    Contact_Phone: formData.Contact_Phone,
+                    
+                    // 連結
+                    MindMap_Link: formData.MindMap_Link,
+                    Slides_Link: formData.Slides_Link,
+                    Video_Link: formData.Video_Link,
+                    Consent_Link: formData.Consent_Link,
+                    Drive_Link: formData.Drive_Link,
+                    
+                    // 備註
+                    Link_Note: formData.Link_Note,
+                    Memo: formData.Memo
+                };
+
+                const response = await fetch(API_URL, {
+                    method: 'POST',
+                    body: JSON.stringify(payload)
+                });
                 const result = await response.json();
+
                 if (result.status === 'success') {
                     setIsModalOpen(false);
                     fetchTeams();
@@ -865,7 +871,7 @@
         };
 
         const handleDelete = async (teamId, teamName) => {
-            if (!confirm(`確定要刪除隊伍「${teamName}」嗎？此動作無法復原。`)) return;
+            if (!confirm(`確定要刪除隊伍「${teamName}」嗎？`)) return;
             setIsLoading(true);
             try {
                 const response = await fetch(API_URL, {
@@ -887,7 +893,6 @@
             }
         };
 
-        // --- Step C: 更新 JSX (工具列 + 表格) ---
         return (
             <div className="bg-white rounded shadow-md p-6 mt-6">
                 <div className="flex justify-between items-center mb-6">
@@ -904,7 +909,7 @@
                     </button>
                 </div>
 
-                {/* --- 工具列區塊 --- */}
+                {/* 工具列 */}
                 <div className="flex flex-col sm:flex-row gap-4 mb-4 bg-gray-50 p-4 rounded border">
                     <div className="flex-1 relative">
                         <span className="material-icons absolute left-3 top-2.5 text-gray-400">search</span>
@@ -916,7 +921,6 @@
                             onChange={(e) => setSearchTerm(e.target.value)}
                         />
                     </div>
-                    {/* ⚠️ 修復下拉選單：確保使用 uniqueGroups */}
                     <div className="sm:w-1/4">
                         <select
                             className="w-full border rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-secondary bg-white"
@@ -931,7 +935,7 @@
                     </div>
                 </div>
 
-                {/* --- 表格區塊 --- */}
+                {/* 表格 */}
                 <div className="max-h-[600px] overflow-y-auto border rounded-lg shadow relative">
                     <table className="min-w-full divide-y divide-gray-200">
                         <thead className="bg-gray-50 sticky top-0 z-10 shadow-sm">
@@ -955,46 +959,41 @@
                                 </td></tr>
                             ) : (
                                 filteredTeams.map((team, index) => {
-                                    // 確保 Key 唯一
                                     const teamId = team.Team_ID || team.id || index;
-                                    
-                                    // 連結資料處理
-                                    const linkMindmap = team.MindMap_Link || team.Link_Mindmap;
-                                    const linkSlides = team.Slides_Link || team.Link_Slides;
-                                    const linkVideo = team.Video_Link || team.Link_Video;
-                                    const linkDrive = team.Drive_Link || team.Link_Drive;
+                                    const teacherStr = [team.Teacher1_Name, team.Teacher2_Name].filter(Boolean).join('、');
+                                    const studentStr = [team.Student1_Name, team.Student2_Name, team.Student3_Name].filter(Boolean).join('、');
+                                    const memberTooltip = `指導老師: ${teacherStr}\n參賽學生: ${studentStr}`;
 
                                     return (
                                         <tr key={teamId} className="hover:bg-gray-50 border-b">
-                                            {/* 年度 */}
-                                            <td className="px-3 py-4 text-sm text-gray-500 whitespace-nowrap">{team.Competition_Year || team.Year || '114'}</td>
+                                            <td className="px-3 py-4 text-sm text-gray-500 whitespace-nowrap">{team.Competition_Year || '114'}</td>
                                             
-                                            {/* 參賽組別 (套用顏色邏輯) */}
                                             <td className="px-3 py-4 text-sm whitespace-nowrap">
                                                 <span className={`px-2 py-1 font-semibold text-xs rounded-full whitespace-nowrap ${getGroupColor(team.Group_Name)}`}>
                                                     {team.Group_Name}
                                                 </span>
                                             </td>
 
-                                            <td className="px-3 py-4 text-sm text-gray-700 whitespace-nowrap">{team.School}</td>
+                                            <td className="px-3 py-4 text-sm text-gray-700 font-medium whitespace-nowrap">{team.School}</td>
                                             <td className="px-3 py-4 text-sm font-bold text-gray-900 max-w-[160px] truncate" title={team.Work_Title}>{team.Work_Title}</td>
                                             <td className="px-3 py-4 text-sm text-gray-500 max-w-xs truncate" title={team.Description}>{team.Description}</td>
 
-                                            {/* 連結 Icon */}
                                             <td className="px-2 py-4 text-center">
-                                                {linkMindmap ? <a href={linkMindmap} target="_blank" rel="noreferrer" className="no-underline text-xl">🗺️</a> : <span className="opacity-20 text-xl grayscale cursor-default">🗺️</span>}
+                                                {team.MindMap_Link ? <a href={team.MindMap_Link} target="_blank" rel="noreferrer" className="no-underline text-xl">🗺️</a> : <span className="opacity-20 text-xl grayscale cursor-default">🗺️</span>}
                                             </td>
                                             <td className="px-2 py-4 text-center">
-                                                {linkSlides ? <a href={linkSlides} target="_blank" rel="noreferrer" className="no-underline text-xl">📊</a> : <span className="opacity-20 text-xl grayscale cursor-default">📊</span>}
+                                                {team.Slides_Link ? <a href={team.Slides_Link} target="_blank" rel="noreferrer" className="no-underline text-xl">📊</a> : <span className="opacity-20 text-xl grayscale cursor-default">📊</span>}
                                             </td>
                                             <td className="px-2 py-4 text-center">
-                                                {linkVideo ? <a href={linkVideo} target="_blank" rel="noreferrer" className="no-underline text-xl">🎬</a> : <span className="opacity-20 text-xl grayscale cursor-default">🎬</span>}
+                                                {team.Video_Link ? <a href={team.Video_Link} target="_blank" rel="noreferrer" className="no-underline text-xl">🎬</a> : <span className="opacity-20 text-xl grayscale cursor-default">🎬</span>}
                                             </td>
                                             <td className="px-2 py-4 text-center">
-                                                {linkDrive ? <a href={linkDrive} target="_blank" rel="noreferrer" className="no-underline text-xl">☁️</a> : <span className="opacity-20 text-xl grayscale cursor-default">☁️</span>}
+                                                {team.Drive_Link ? <a href={team.Drive_Link} target="_blank" rel="noreferrer" className="no-underline text-xl">☁️</a> : <span className="opacity-20 text-xl grayscale cursor-default">☁️</span>}
                                             </td>
 
-                                            <td className="px-3 py-4 text-sm text-gray-500 max-w-[100px] truncate" title={team.Memo}>{team.Memo}</td>
+                                            <td className="px-3 py-4 text-sm text-gray-500 max-w-[100px] truncate" title={`${team.Link_Note || ''} ${team.Memo || ''}`}>
+                                                {team.Memo}
+                                            </td>
 
                                             <td className="px-3 py-4 text-sm text-right whitespace-nowrap">
                                                 <button onClick={() => openModal('edit', team)} className="text-indigo-600 hover:text-indigo-900 mr-3 font-medium">編輯</button>
@@ -1008,7 +1007,7 @@
                     </table>
                 </div>
 
-                {/* Edit Modal (保持不變) */}
+                {/* Edit Modal */}
                 {isModalOpen && (
                     <div className="fixed inset-0 z-50 overflow-y-auto">
                         <div className="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:block sm:p-0">
@@ -1025,6 +1024,7 @@
                                     </button>
                                 </div>
 
+                                {/* Tabs Navigation */}
                                 <div className="bg-white border-b border-gray-200">
                                     <nav className="-mb-px flex">
                                         {[
@@ -1050,54 +1050,58 @@
                                 </div>
 
                                 <div className="px-6 py-6 max-h-[60vh] overflow-y-auto">
+                                    {/* Tab 1: 基本資料 (更新 name 屬性為 PascalCase) */}
                                     {activeModalTab === 'basic' && (
                                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                             <div>
                                                 <label className="block text-sm font-medium text-gray-700">年度</label>
-                                                <input type="number" name="year" value={formData.basic.year} onChange={handleBasicChange} className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:ring-secondary focus:border-secondary" />
+                                                <input type="number" name="Competition_Year" value={formData.Competition_Year} onChange={handleChange} className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:ring-secondary focus:border-secondary" />
                                             </div>
                                             <div>
                                                 <label className="block text-sm font-medium text-gray-700">參賽組別</label>
-                                                <select name="category" value={formData.basic.category} onChange={handleBasicChange} className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:ring-secondary focus:border-secondary bg-white">
+                                                <select name="Group_Name" value={formData.Group_Name} onChange={handleChange} className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:ring-secondary focus:border-secondary bg-white">
                                                     {ALL_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
                                                 </select>
                                             </div>
                                             <div className="md:col-span-2">
                                                 <label className="block text-sm font-medium text-gray-700">學校全銜</label>
-                                                <input type="text" name="school" value={formData.basic.school} onChange={handleBasicChange} className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:ring-secondary focus:border-secondary" placeholder="例如：宜蘭縣立復興國中" />
+                                                <input type="text" name="School" value={formData.School} onChange={handleChange} className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:ring-secondary focus:border-secondary" placeholder="例如：宜蘭縣立復興國中" />
                                             </div>
                                             <div className="md:col-span-2">
                                                 <label className="block text-sm font-medium text-gray-700">隊名</label>
-                                                <input type="text" name="group_name" value={formData.basic.group_name} onChange={handleBasicChange} className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:ring-secondary focus:border-secondary" />
+                                                <input type="text" name="Team_Name" value={formData.Team_Name} onChange={handleChange} className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:ring-secondary focus:border-secondary" />
                                             </div>
                                             <div className="md:col-span-2">
                                                 <label className="block text-sm font-medium text-gray-700">作品名稱</label>
-                                                <input type="text" name="work_title" value={formData.basic.work_title} onChange={handleBasicChange} className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:ring-secondary focus:border-secondary" />
+                                                <input type="text" name="Work_Title" value={formData.Work_Title} onChange={handleChange} className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:ring-secondary focus:border-secondary" />
                                             </div>
                                             <div className="md:col-span-2">
                                                 <label className="block text-sm font-medium text-gray-700">作品簡介</label>
-                                                <textarea name="description" rows="3" value={formData.basic.description} onChange={handleBasicChange} className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:ring-secondary focus:border-secondary"></textarea>
+                                                <textarea name="Description" rows="3" value={formData.Description} onChange={handleChange} className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:ring-secondary focus:border-secondary"></textarea>
                                             </div>
                                         </div>
                                     )}
 
+                                    {/* Tab 2: 人員編制 (更新 name 屬性) */}
                                     {activeModalTab === 'personnel' && (
                                         <div className="space-y-6">
                                             <div>
                                                 <h4 className="text-sm font-bold text-gray-900 mb-2 border-b pb-1">參賽學生 (最多3位)</h4>
-                                                {formData.students.map((student, idx) => (
-                                                    <div key={`stu-${idx}`} className="flex gap-2 mb-2 items-center">
-                                                        <span className="text-sm text-gray-500 w-12">學生{idx + 1}</span>
+                                                {[1, 2, 3].map(i => (
+                                                    <div key={`stu-${i}`} className="flex gap-2 mb-2 items-center">
+                                                        <span className="text-sm text-gray-500 w-12">學生{i}</span>
                                                         <input 
+                                                            name={`Student${i}_Name`}
                                                             type="text" placeholder="姓名" 
-                                                            value={student.name} 
-                                                            onChange={(e) => handleArrayChange('students', idx, 'name', e.target.value)}
+                                                            value={formData[`Student${i}_Name`]} 
+                                                            onChange={handleChange}
                                                             className="flex-1 border border-gray-300 rounded-md py-1 px-2 text-sm"
                                                         />
                                                         <input 
+                                                            name={`Student${i}_Email`}
                                                             type="text" placeholder="Email (OpenID)" 
-                                                            value={student.email} 
-                                                            onChange={(e) => handleArrayChange('students', idx, 'email', e.target.value)}
+                                                            value={formData[`Student${i}_Email`]} 
+                                                            onChange={handleChange}
                                                             className="flex-1 border border-gray-300 rounded-md py-1 px-2 text-sm"
                                                         />
                                                     </div>
@@ -1105,19 +1109,21 @@
                                             </div>
                                             <div>
                                                 <h4 className="text-sm font-bold text-gray-900 mb-2 border-b pb-1">指導老師 (最多2位)</h4>
-                                                {formData.teachers.map((teacher, idx) => (
-                                                    <div key={`tea-${idx}`} className="flex gap-2 mb-2 items-center">
-                                                        <span className="text-sm text-gray-500 w-12">老師{idx + 1}</span>
+                                                {[1, 2].map(i => (
+                                                    <div key={`tea-${i}`} className="flex gap-2 mb-2 items-center">
+                                                        <span className="text-sm text-gray-500 w-12">老師{i}</span>
                                                         <input 
+                                                            name={`Teacher${i}_Name`}
                                                             type="text" placeholder="姓名" 
-                                                            value={teacher.name} 
-                                                            onChange={(e) => handleArrayChange('teachers', idx, 'name', e.target.value)}
+                                                            value={formData[`Teacher${i}_Name`]} 
+                                                            onChange={handleChange}
                                                             className="flex-1 border border-gray-300 rounded-md py-1 px-2 text-sm"
                                                         />
                                                         <input 
+                                                            name={`Teacher${i}_Email`}
                                                             type="text" placeholder="Email" 
-                                                            value={teacher.email} 
-                                                            onChange={(e) => handleArrayChange('teachers', idx, 'email', e.target.value)}
+                                                            value={formData[`Teacher${i}_Email`]} 
+                                                            onChange={handleChange}
                                                             className="flex-1 border border-gray-300 rounded-md py-1 px-2 text-sm"
                                                         />
                                                     </div>
@@ -1126,50 +1132,52 @@
                                         </div>
                                     )}
 
+                                    {/* Tab 3: 聯絡窗口 */}
                                     {activeModalTab === 'contact' && (
                                         <div className="space-y-4">
                                             <div className="flex space-x-2 mb-4">
-                                                <button type="button" onClick={() => quickImportContact(0)} className="text-xs bg-gray-200 hover:bg-gray-300 px-2 py-1 rounded">
-                                                    同指導老師1
-                                                </button>
-                                                <button type="button" onClick={() => quickImportContact(1)} className="text-xs bg-gray-200 hover:bg-gray-300 px-2 py-1 rounded">
-                                                    同指導老師2
-                                                </button>
+                                                <button type="button" onClick={() => quickImportContact(1)} className="text-xs bg-gray-200 hover:bg-gray-300 px-2 py-1 rounded">同指導老師1</button>
+                                                <button type="button" onClick={() => quickImportContact(2)} className="text-xs bg-gray-200 hover:bg-gray-300 px-2 py-1 rounded">同指導老師2</button>
                                             </div>
                                             <div>
                                                 <label className="block text-sm font-medium text-gray-700">聯絡人姓名</label>
-                                                <input type="text" name="name" value={formData.contact.name} onChange={handleContactChange} className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:ring-secondary focus:border-secondary" />
+                                                <input type="text" name="Contact_Person" value={formData.Contact_Person} onChange={handleChange} className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:ring-secondary focus:border-secondary" />
                                             </div>
                                             <div>
                                                 <label className="block text-sm font-medium text-gray-700">聯絡電話</label>
-                                                <input type="text" name="phone" value={formData.contact.phone} onChange={handleContactChange} className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:ring-secondary focus:border-secondary" />
+                                                <input type="text" name="Contact_Phone" value={formData.Contact_Phone} onChange={handleChange} className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:ring-secondary focus:border-secondary" />
                                             </div>
                                         </div>
                                     )}
 
+                                    {/* Tab 4: 資源與備註 */}
                                     {activeModalTab === 'resources' && (
                                         <div className="space-y-3">
-                                            {['mindmap:心智圖連結', 'slides:簡報連結', 'video:影片連結', 'consent:著作權同意書', 'drive:雲端資料夾'].map(item => {
-                                                const [key, label] = item.split(':');
-                                                return (
-                                                    <div key={key}>
-                                                        <label className="block text-xs font-medium text-gray-500">{label}</label>
-                                                        <input type="url" name={key} value={formData.links[key]} onChange={handleLinkChange} className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-1 px-2 text-sm focus:ring-secondary focus:border-secondary" placeholder="https://..." />
-                                                    </div>
-                                                );
-                                            })}
+                                            {[
+                                                { k: 'MindMap_Link', l: '心智圖連結' },
+                                                { k: 'Slides_Link', l: '簡報連結' },
+                                                { k: 'Video_Link', l: '影片連結' },
+                                                { k: 'Consent_Link', l: '著作權同意書' },
+                                                { k: 'Drive_Link', l: '雲端資料夾' }
+                                            ].map(item => (
+                                                <div key={item.k}>
+                                                    <label className="block text-xs font-medium text-gray-500">{item.l}</label>
+                                                    <input type="url" name={item.k} value={formData[item.k]} onChange={handleChange} className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-1 px-2 text-sm focus:ring-secondary focus:border-secondary" placeholder="https://..." />
+                                                </div>
+                                            ))}
                                             <div>
                                                 <label className="block text-xs font-medium text-gray-500">連結備註</label>
-                                                <input type="text" name="link_note" value={formData.links.link_note} onChange={handleLinkChange} className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-1 px-2 text-sm" />
+                                                <input type="text" name="Link_Note" value={formData.Link_Note} onChange={handleChange} className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-1 px-2 text-sm" />
                                             </div>
                                             <div className="pt-2 border-t mt-4 bg-yellow-50 p-2 rounded">
                                                 <label className="block text-sm font-bold text-gray-700">管理員專用備註 (Memo)</label>
-                                                <textarea name="memo" value={formData.basic.memo} onChange={handleBasicChange} rows="2" className="mt-1 block w-full border border-yellow-300 bg-white rounded-md shadow-sm py-2 px-3 focus:ring-yellow-500 focus:border-yellow-500 text-sm"></textarea>
+                                                <textarea name="Memo" value={formData.Memo} onChange={handleChange} rows="2" className="mt-1 block w-full border border-yellow-300 bg-white rounded-md shadow-sm py-2 px-3 focus:ring-yellow-500 focus:border-yellow-500 text-sm"></textarea>
                                             </div>
                                         </div>
                                     )}
                                 </div>
 
+                                {/* Footer */}
                                 <div className="bg-gray-50 px-4 py-3 sm:px-6 sm:flex sm:flex-row-reverse justify-between">
                                     <div className="flex sm:flex-row-reverse w-full">
                                         <button 
@@ -1195,7 +1203,7 @@
                                             type="button"
                                             onClick={() => {
                                                 setIsModalOpen(false);
-                                                handleDelete(formData.team_id, formData.basic.group_name);
+                                                handleDelete(formData.Team_ID, formData.Group_Name);
                                             }}
                                             className="mt-3 w-auto inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-red-100 text-base font-medium text-red-700 hover:bg-red-200 sm:mt-0 sm:text-sm"
                                         >
