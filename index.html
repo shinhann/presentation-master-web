@@ -254,7 +254,7 @@
         );
     };
 
-    // --- 核心功能：評審管理元件 (JudgeManager) ---
+    // --- 核心功能：評審管理元件 (JudgeManager) ---jan 24 20:21 update
     const JudgeManager = () => {
         const [judges, setJudges] = useState([]);
         const [isLoading, setIsLoading] = useState(false);
@@ -597,7 +597,7 @@
         );
     };
 
-    // --- 隊伍資源管理元件 (TeamManager) --- Jan 24 18:33
+// --- 隊伍資源管理元件 (TeamManager) ---
     const TeamManager = () => {
         const [teams, setTeams] = useState([]);
         const [isLoading, setIsLoading] = useState(false);
@@ -608,11 +608,11 @@
         const [activeModalTab, setActiveModalTab] = useState('basic'); // basic, personnel, contact, resources
         const [isSaving, setIsSaving] = useState(false);
 
-        // 初始表單狀態 (巢狀結構)
+        // 初始表單狀態
         const initialFormState = {
             team_id: '',
             basic: {
-                year: new Date().getFullYear() - 1911, // 預設民國年
+                year: new Date().getFullYear() - 1911,
                 category: ALL_CATEGORIES[0],
                 school: '',
                 group_name: '',
@@ -652,6 +652,11 @@
                 });
                 const result = await response.json();
                 if (result.status === 'success') {
+                    // ★ 除錯：印出第一筆資料，檢查欄位名稱 (按 F12 看 Console)
+                    if (result.data && result.data.length > 0) {
+                        console.log('第一筆隊伍資料 (Debug):', result.data[0]);
+                    }
+
                     // 依照 category 排序
                     const sorted = result.data.sort((a, b) => {
                         return (a.category || '').localeCompare(b.category || '');
@@ -672,7 +677,7 @@
             fetchTeams();
         }, []);
 
-        // 2. 處理表單變更 (Deep Update)
+        // 2. 處理表單變更
         const handleBasicChange = (e) => {
             const { name, value } = e.target;
             setFormData(prev => ({ ...prev, basic: { ...prev.basic, [name]: value } }));
@@ -680,7 +685,7 @@
 
         const handleArrayChange = (type, index, field, value) => {
             setFormData(prev => {
-                const newArray = [...prev[type]]; // students or teachers
+                const newArray = [...prev[type]]; 
                 newArray[index] = { ...newArray[index], [field]: value };
                 return { ...prev, [type]: newArray };
             });
@@ -696,7 +701,6 @@
             setFormData(prev => ({ ...prev, links: { ...prev.links, [name]: value } }));
         };
 
-        // 快速帶入聯絡人
         const quickImportContact = (teacherIndex) => {
             const teacher = formData.teachers[teacherIndex];
             if (teacher && teacher.name) {
@@ -709,22 +713,17 @@
             }
         };
 
-        // 3. 開啟 Modal (新增/編輯)
+        // 3. 開啟 Modal
         const openModal = (mode, team = null) => {
             setModalMode(mode);
-            setActiveModalTab('basic'); // 重置分頁
+            setActiveModalTab('basic');
 
             if (mode === 'edit' && team) {
-                // 這裡假設 API 回傳的是平面化資料 (Flat Data)，需要 Mapping 回結構
-                // 若 API 回傳已是巢狀結構，則直接使用。這裡做一個相容性處理。
-                
-                // 輔助函數：讀取欄位，優先讀取巢狀，其次讀取平面 (ex: student1_name)
-                const getVal = (obj, key, flatKey) => obj?.[key] || team[flatKey] || '';
-                
                 setFormData({
                     team_id: team.team_id || team.id || '',
                     basic: {
-                        year: team.basic?.year || team.year || (new Date().getFullYear() - 1911),
+                        // ★ 這裡也加上讀取容錯，確保編輯時年份能帶入
+                        year: team.basic?.year || team.Competition_Year || team.year || (new Date().getFullYear() - 1911),
                         category: team.basic?.category || team.category || ALL_CATEGORIES[0],
                         school: team.basic?.school || team.school || '',
                         group_name: team.basic?.group_name || team.group_name || '',
@@ -771,7 +770,7 @@
                 const payload = {
                     action: 'saveTeam',
                     API_Key: API_KEY,
-                    ...formData // 直接送出結構化物件，後端負責拆解
+                    ...formData 
                 };
 
                 const response = await fetch(API_URL, {
@@ -844,9 +843,9 @@
                         <thead className="bg-gray-50">
                             <tr>
                                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase whitespace-nowrap">年度</th>
-                                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase whitespace-nowrap">類別</th>
+                                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase whitespace-nowrap">組別</th>
                                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase whitespace-nowrap">學校</th>
-                                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase whitespace-nowrap">報名組別</th>
+                                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase whitespace-nowrap">隊名</th>
                                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase whitespace-nowrap">作品名稱</th>
                                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase whitespace-nowrap">指導老師</th>
                                 <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase whitespace-nowrap">操作</th>
@@ -859,15 +858,17 @@
                                 <tr><td colSpan="7" className="px-6 py-4 text-center text-gray-500">無參賽隊伍資料</td></tr>
                             ) : (
                                 teams.map((team, idx) => {
-                                    // 相容平面/結構資料
                                     const teacherNames = [
                                         team.teachers?.[0]?.name || team.teacher1_name,
                                         team.teachers?.[1]?.name || team.teacher2_name
                                     ].filter(Boolean).join('、');
 
+                                    // ★ 修正：年度顯示邏輯 (Fallback)
+                                    const displayYear = team.basic?.year || team.Competition_Year || team.year || '114';
+
                                     return (
                                         <tr key={team.team_id || idx} className="hover:bg-gray-50">
-                                            <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-900">{team.basic?.year || team.year}</td>
+                                            <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-900">{displayYear}</td>
                                             <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500">{team.basic?.category || team.category}</td>
                                             <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-900 font-medium">{team.basic?.school || team.school}</td>
                                             <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-900">{team.basic?.group_name || team.group_name}</td>
@@ -899,7 +900,6 @@
                             <span className="hidden sm:inline-block sm:align-middle sm:h-screen">&#8203;</span>
                             
                             <div className="inline-block align-bottom bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-3xl w-full">
-                                {/* Modal Header */}
                                 <div className="bg-gray-100 px-4 py-3 border-b flex justify-between items-center">
                                     <h3 className="text-lg font-medium text-gray-900">
                                         {modalMode === 'add' ? '新增參賽隊伍' : '編輯隊伍資料'}
@@ -909,7 +909,6 @@
                                     </button>
                                 </div>
 
-                                {/* Tabs Navigation */}
                                 <div className="bg-white border-b border-gray-200">
                                     <nav className="-mb-px flex">
                                         {[
@@ -934,10 +933,7 @@
                                     </nav>
                                 </div>
 
-                                {/* Tab Content */}
                                 <div className="px-6 py-6 max-h-[60vh] overflow-y-auto">
-                                    
-                                    {/* Tab 1: 基本資料 */}
                                     {activeModalTab === 'basic' && (
                                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                             <div>
@@ -969,7 +965,6 @@
                                         </div>
                                     )}
 
-                                    {/* Tab 2: 人員編制 */}
                                     {activeModalTab === 'personnel' && (
                                         <div className="space-y-6">
                                             <div>
@@ -1015,7 +1010,6 @@
                                         </div>
                                     )}
 
-                                    {/* Tab 3: 聯絡窗口 */}
                                     {activeModalTab === 'contact' && (
                                         <div className="space-y-4">
                                             <div className="flex space-x-2 mb-4">
@@ -1037,7 +1031,6 @@
                                         </div>
                                     )}
 
-                                    {/* Tab 4: 資源與備註 */}
                                     {activeModalTab === 'resources' && (
                                         <div className="space-y-3">
                                             {['mindmap:心智圖連結', 'slides:簡報連結', 'video:影片連結', 'consent:著作權同意書', 'drive:雲端資料夾'].map(item => {
@@ -1061,7 +1054,6 @@
                                     )}
                                 </div>
 
-                                {/* Modal Footer */}
                                 <div className="bg-gray-50 px-4 py-3 sm:px-6 sm:flex sm:flex-row-reverse">
                                     <button 
                                         type="button" 
