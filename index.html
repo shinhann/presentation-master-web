@@ -456,99 +456,95 @@
                                     {searchTerm ? '找不到符合關鍵字的隊伍' : '目前無參賽隊伍資料'}
                                 </td></tr>
                             ) : (
-                                filteredTeams.map((team, idx) => {
-                                    // --- 1. 資料讀取 (扁平化結構修正) ---
-                                    // 依照 PM 指示，直接讀取大寫 Key，並設定安全預設值
-                                    
-                                    // ID 與 年度
-                                    const teamId = team.Team_ID || team.id || idx;
-                                    const displayYear = team.Competition_Year || team.Year || '114';
-                                    
-                                    // 基本資料
-                                    // 注意：依 PM 範例，Group_Name 用於組別顯示
-                                    const category = team.Group_Name || team.Category || ''; 
-                                    const school = team.School || '';
-                                    const teamName = team.Team_Name || ''; // 若後端無此欄位則留空，維持欄位對齊
-                                    const workTitle = team.Work_Title || '';
-                                    const description = team.Description || '';
-                                    const memo = team.Memo || '';
-                                    
-                                    // --- 2. 人員名單處理 (組合多個欄位) ---
-                                    const teachers = [team.Teacher1_Name, team.Teacher2_Name].filter(Boolean);
-                                    const students = [team.Student1_Name, team.Student2_Name, team.Student3_Name].filter(Boolean);
-                                    
-                                    const teacherStr = teachers.join('、');
-                                    // Tooltip: 顯示詳細成員
-                                    const memberTooltip = `指導老師: ${teacherStr}\n參賽學生: ${students.join('、')}`;
+                                filteredTeams.map((team, index) => (
+                                    <tr key={team.Team_ID || index} className="hover:bg-gray-50 border-b">
+                                        {/* 1. 年度 */}
+                                        <td className="px-3 py-4 text-sm text-gray-500 whitespace-nowrap">
+                                            {team.Competition_Year || '114'}
+                                        </td>
+                                        
+                                        {/* 2. 參賽組別 (讀取 Group_Name) */}
+                                        <td className="px-3 py-4 text-sm whitespace-nowrap">
+                                            <span className="px-2 py-1 font-semibold text-green-700 bg-green-100 rounded-full text-xs">
+                                                {team.Group_Name}
+                                            </span>
+                                        </td>
 
-                                    // --- 3. 連結資料處理 (猜測後端欄位為 Link_Xxx) ---
-                                    const linkMindmap = team.Link_Mindmap || team.links?.mindmap;
-                                    const linkSlides = team.Link_Slides || team.links?.slides;
-                                    const linkVideo = team.Link_Video || team.links?.video;
-                                    const linkDrive = team.Link_Drive || team.links?.drive;
+                                        {/* 3. 學校 (讀取 School) */}
+                                        <td className="px-3 py-4 text-sm text-gray-700 font-medium whitespace-nowrap">
+                                            {team.School}
+                                        </td>
 
-                                    // 輔助函式：渲染連結按鈕
-                                    const renderLink = (url, icon) => {
-                                        if (!url) return <span className="text-gray-300">-</span>;
-                                        return (
-                                            <a href={url} target="_blank" rel="noopener noreferrer" className="text-blue-500 hover:text-blue-700 flex justify-center">
-                                                <span className="material-icons text-lg" title="點擊開啟">{icon}</span>
-                                            </a>
-                                        );
-                                    };
+                                        {/* 4. 作品名稱 (讀取 Work_Title) */}
+                                        <td className="px-3 py-4 text-sm font-bold text-gray-900 max-w-[160px] truncate" title={team.Work_Title}>
+                                            {team.Work_Title}
+                                        </td>
 
-                                    return (
-                                        <tr key={teamId} className="hover:bg-gray-50">
-                                            {/* 1. 年度 */}
-                                            <td className="px-3 py-4 whitespace-nowrap text-sm text-gray-900">{displayYear}</td>
-                                            
-                                            {/* 2. 參賽組別 (對應 Group_Name) */}
-                                            <td className="px-3 py-4 whitespace-nowrap text-sm">
-                                                <span className="bg-blue-100 text-blue-800 text-xs font-semibold px-2 py-1 rounded">
-                                                    {category}
-                                                </span>
-                                            </td>
-                                            
-                                            {/* 3. 學校 */}
-                                            <td className="px-3 py-4 whitespace-nowrap text-sm text-gray-500">{school}</td>
-                                            
-                                            {/* 4. 作品名稱 (這裡整合 Work_Title) */}
-                                            <td className="px-3 py-4 text-sm text-gray-900 max-w-[200px] truncate font-medium" title={workTitle}>
-                                                {workTitle}
-                                            </td>
-                                            
-                                            {/* 5. 指導老師/成員 (取代原本的作品說明欄位，符合 PM 範例結構) */}
-                                            <td className="px-3 py-4 text-sm text-gray-600 cursor-help border-b border-dotted border-gray-300" title={memberTooltip}>
-                                                <div className="flex items-center">
-                                                    <span className="truncate max-w-[150px]">{teacherStr}</span>
-                                                    {students.length > 0 && <span className="ml-1 text-xs text-gray-400">+{students.length}學生</span>}
-                                                </div>
-                                            </td>
+                                        {/* 5. 作品說明 (讀取 Description) */}
+                                        <td className="px-3 py-4 text-sm text-gray-500 max-w-xs truncate" title={team.Description}>
+                                            {team.Description}
+                                        </td>
 
-                                            {/* 6-9. 連結區 */}
-                                            <td className="px-2 py-4 text-center">{renderLink(linkMindmap, 'psychology')}</td>
-                                            <td className="px-2 py-4 text-center">{renderLink(linkSlides, 'slideshow')}</td>
-                                            <td className="px-2 py-4 text-center">{renderLink(linkVideo, 'movie')}</td>
-                                            <td className="px-2 py-4 text-center">{renderLink(linkDrive, 'folder')}</td>
+                                        {/* 6. 連結圖示區 (MindMap_Link 等) */}
+                                        <td className="px-2 py-4 text-center">
+                                            {team.MindMap_Link ? (
+                                                <a href={team.MindMap_Link} target="_blank" rel="noreferrer" className="text-blue-500 hover:text-blue-700 no-underline" title="心智圖">
+                                                    <span className="text-xl">🗺️</span>
+                                                </a>
+                                            ) : (
+                                                <span className="opacity-20 text-xl cursor-default">🗺️</span>
+                                            )}
+                                        </td>
+                                        <td className="px-2 py-4 text-center">
+                                            {team.Slides_Link ? (
+                                                <a href={team.Slides_Link} target="_blank" rel="noreferrer" className="text-orange-500 hover:text-orange-700 no-underline" title="簡報">
+                                                    <span className="text-xl">📊</span>
+                                                </a>
+                                            ) : (
+                                                <span className="opacity-20 text-xl cursor-default">📊</span>
+                                            )}
+                                        </td>
+                                        <td className="px-2 py-4 text-center">
+                                            {team.Video_Link ? (
+                                                <a href={team.Video_Link} target="_blank" rel="noreferrer" className="text-red-500 hover:text-red-700 no-underline" title="影片">
+                                                    <span className="text-xl">🎬</span>
+                                                </a>
+                                            ) : (
+                                                <span className="opacity-20 text-xl cursor-default">🎬</span>
+                                            )}
+                                        </td>
+                                        <td className="px-2 py-4 text-center">
+                                            {team.Drive_Link ? (
+                                                <a href={team.Drive_Link} target="_blank" rel="noreferrer" className="text-green-600 hover:text-green-800 no-underline" title="雲端">
+                                                    <span className="text-xl">☁️</span>
+                                                </a>
+                                            ) : (
+                                                <span className="opacity-20 text-xl cursor-default">☁️</span>
+                                            )}
+                                        </td>
 
-                                            {/* 10. 備註 (顯示 Link_Note 或 Memo) */}
-                                            <td className="px-3 py-4 text-sm text-gray-500 max-w-[100px] truncate" title={`${team.Link_Note || ''} ${memo}`}>
-                                                {team.Link_Note ? <span className="text-xs bg-gray-100 px-1 rounded mr-1">註</span> : null}
-                                                {memo}
-                                            </td>
+                                        {/* 7. 備註 (讀取 Memo) */}
+                                        <td className="px-3 py-4 text-sm text-gray-500 max-w-[100px] truncate" title={team.Memo}>
+                                            {team.Memo}
+                                        </td>
 
-                                            {/* 11. 操作 */}
-                                            <td className="px-3 py-4 whitespace-nowrap text-right text-sm font-medium">
-                                                <button onClick={() => openModal('edit', team)} className="text-blue-600 hover:text-blue-900 mr-2" title="編輯">
-                                                    <span className="material-icons text-base">edit</span>
-                                                </button>
-                                                <button onClick={() => handleDelete(teamId, team.Group_Name || '此隊伍')} className="text-red-600 hover:text-red-900" title="刪除">
-                                                    <span className="material-icons text-base">delete</span>
-                                                </button>
-                                            </td>
-                                        </tr>
-                                    );
-                                })
+                                        {/* 8. 操作按鈕 (整合現有功能) */}
+                                        <td className="px-3 py-4 text-sm text-right whitespace-nowrap">
+                                            <button 
+                                                onClick={() => openModal('edit', team)} 
+                                                className="text-indigo-600 hover:text-indigo-900 mr-3 font-medium"
+                                            >
+                                                編輯
+                                            </button>
+                                            <button 
+                                                onClick={() => handleDelete(team.Team_ID, team.Group_Name)} 
+                                                className="text-red-600 hover:text-red-900 font-medium"
+                                            >
+                                                刪除
+                                            </button>
+                                        </td>
+                                    </tr>
+                                ))
                             )}
                         </tbody>
                     </table>
