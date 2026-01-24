@@ -943,7 +943,7 @@
                     </div>
                 </div>
 
-                {/* Table List */}
+{/* Table List */}
                 <div className="max-h-[600px] overflow-y-auto border rounded-lg shadow relative">
                     <table className="min-w-full divide-y divide-gray-200">
                         <thead className="bg-gray-50">
@@ -952,78 +952,114 @@
                                 <th className="sticky top-0 bg-gray-100 z-10 px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase whitespace-nowrap shadow-sm">參賽組別</th>
                                 <th className="sticky top-0 bg-gray-100 z-10 px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase whitespace-nowrap shadow-sm">學校</th>
                                 <th className="sticky top-0 bg-gray-100 z-10 px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase whitespace-nowrap shadow-sm">作品名稱</th>
-                                <th className="sticky top-0 bg-gray-100 z-10 px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase whitespace-nowrap shadow-sm">指導老師 / 成員</th>
-                                <th className="sticky top-0 bg-gray-100 z-10 px-2 py-3 text-center text-xs font-medium text-gray-500 uppercase whitespace-nowrap shadow-sm">連結</th>
+                                <th className="sticky top-0 bg-gray-100 z-10 px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase whitespace-nowrap shadow-sm">作品說明</th>
+                                {/* 連結四欄 */}
+                                <th className="sticky top-0 bg-gray-100 z-10 px-2 py-3 text-center text-xs font-medium text-gray-500 uppercase whitespace-nowrap shadow-sm">心智圖</th>
+                                <th className="sticky top-0 bg-gray-100 z-10 px-2 py-3 text-center text-xs font-medium text-gray-500 uppercase whitespace-nowrap shadow-sm">簡報</th>
+                                <th className="sticky top-0 bg-gray-100 z-10 px-2 py-3 text-center text-xs font-medium text-gray-500 uppercase whitespace-nowrap shadow-sm">影片</th>
+                                <th className="sticky top-0 bg-gray-100 z-10 px-2 py-3 text-center text-xs font-medium text-gray-500 uppercase whitespace-nowrap shadow-sm">雲端</th>
+                                
                                 <th className="sticky top-0 bg-gray-100 z-10 px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase whitespace-nowrap shadow-sm">備註</th>
                                 <th className="sticky top-0 bg-gray-100 z-10 px-3 py-3 text-right text-xs font-medium text-gray-500 uppercase whitespace-nowrap shadow-sm">操作</th>
                             </tr>
                         </thead>
                         <tbody className="bg-white divide-y divide-gray-200">
                             {isLoading ? (
-                                <tr><td colSpan="8" className="px-6 py-4 text-center text-gray-500">載入中...</td></tr>
+                                <tr><td colSpan="11" className="px-6 py-4 text-center text-gray-500">載入中...</td></tr>
                             ) : filteredTeams.length === 0 ? (
-                                <tr><td colSpan="8" className="px-6 py-4 text-center text-gray-500">
+                                <tr><td colSpan="11" className="px-6 py-4 text-center text-gray-500">
                                     {searchTerm ? '找不到符合關鍵字的隊伍' : '目前無參賽隊伍資料'}
                                 </td></tr>
                             ) : (
                                 filteredTeams.map((team, idx) => {
-                                    const displayYear = team.basic?.year || team.Competition_Year || team.year || '114';
-                                    const displayGroup = team.basic?.group_name || team.group_name || '';
-                                    const school = team.basic?.school || team.school || '';
-                                    const workTitle = team.basic?.work_title || team.work_title || '';
-                                    const memo = team.basic?.memo || team.memo || '';
-                                    
-                                    // 老師與學生名單 (用於 Tooltip)
-                                    const teachers = [
-                                        team.teachers?.[0]?.name || team.teacher1_name,
-                                        team.teachers?.[1]?.name || team.teacher2_name
-                                    ].filter(Boolean);
-                                    
-                                    const students = [
-                                        team.students?.[0]?.name || team.student1_name,
-                                        team.students?.[1]?.name || team.student2_name,
-                                        team.students?.[2]?.name || team.student3_name
-                                    ].filter(Boolean);
-                                    
-                                    const teacherStr = teachers.join('、');
-                                    // Tooltip 內容：顯示詳細成員名單
-                                    const memberTooltip = `指導老師: ${teacherStr}\n參賽學生: ${students.join('、')}`;
-
-                                    // 連結檢查 (只要有任一連結就顯示圖示)
-                                    const hasLinks = [
-                                        team.links?.mindmap, team.links?.slides, team.links?.video, team.links?.drive
-                                    ].some(l => l && l.length > 0);
+                                    // 確保 Key 唯一
+                                    const rowKey = team.Team_ID || team.id || idx;
 
                                     return (
-                                        <tr key={team.team_id || idx} className="hover:bg-gray-50">
-                                            <td className="px-3 py-4 whitespace-nowrap text-sm text-gray-900">{displayYear}</td>
-                                            <td className="px-3 py-4 whitespace-nowrap text-sm text-gray-900 font-medium">{displayGroup}</td>
-                                            <td className="px-3 py-4 whitespace-nowrap text-sm text-gray-500">{school}</td>
-                                            <td className="px-3 py-4 text-sm text-gray-900 max-w-[200px] truncate" title={workTitle}>
-                                                {workTitle}
-                                            </td>
-                                            {/* 指導老師欄位 (含 Tooltip) */}
-                                            <td className="px-3 py-4 text-sm text-gray-600 cursor-help border-b border-dotted border-gray-300" title={memberTooltip}>
-                                                <div className="flex items-center">
-                                                    <span className="truncate max-w-[150px]">{teacherStr}</span>
-                                                    {students.length > 0 && <span className="ml-1 text-xs text-gray-400">+{students.length}學生</span>}
-                                                </div>
+                                        <tr key={rowKey} className="hover:bg-gray-50">
+                                            {/* 1. 年度 */}
+                                            <td className="px-3 py-4 text-sm text-gray-500 whitespace-nowrap">
+                                                {team.Year || '114'}
                                             </td>
                                             
-                                            {/* 連結整合欄位 */}
+                                            {/* 2. 參賽組別 (綠色 Badge) */}
+                                            <td className="px-3 py-4 text-sm whitespace-nowrap">
+                                                <span className="px-2 py-1 font-semibold leading-tight text-green-700 bg-green-100 rounded-full text-xs">
+                                                    {team.Group_Name}
+                                                </span>
+                                            </td>
+
+                                            {/* 3. 學校 */}
+                                            <td className="px-3 py-4 text-sm text-gray-700 whitespace-nowrap">
+                                                {team.School}
+                                            </td>
+
+                                            {/* 4. 作品名稱 (粗體) */}
+                                            <td className="px-3 py-4 text-sm font-bold text-gray-900 max-w-[160px] truncate" title={team.Work_Title}>
+                                                {team.Work_Title}
+                                            </td>
+
+                                            {/* 5. 作品說明 (限制寬度) */}
+                                            <td className="px-3 py-4 text-sm text-gray-500 max-w-xs truncate" title={team.Description}>
+                                                {team.Description}
+                                            </td>
+
+                                            {/* 6. 心智圖 */}
                                             <td className="px-2 py-4 text-center">
-                                                {hasLinks ? (
-                                                    <span className="material-icons text-blue-500 text-lg" title="有點擊內容">link</span>
+                                                {team.MindMap_Link ? (
+                                                    <a href={team.MindMap_Link} target="_blank" rel="noreferrer" className="text-blue-500 hover:text-blue-700" title="開啟心智圖">
+                                                        <span className="material-icons">psychology</span>
+                                                    </a>
                                                 ) : (
-                                                    <span className="text-gray-300">-</span>
+                                                    <span className="material-icons text-gray-300 cursor-not-allowed">psychology</span>
                                                 )}
                                             </td>
 
-                                            <td className="px-3 py-4 text-sm text-gray-500 max-w-[100px] truncate" title={memo}>{memo}</td>
-                                            <td className="px-3 py-4 whitespace-nowrap text-right text-sm font-medium">
-                                                <button onClick={() => openModal('edit', team)} className="text-blue-600 hover:text-blue-900 flex items-center justify-end ml-auto">
-                                                    <span className="material-icons text-base mr-1">visibility</span>
-                                                    詳情
+                                            {/* 7. 簡報 */}
+                                            <td className="px-2 py-4 text-center">
+                                                {team.Slides_Link ? (
+                                                    <a href={team.Slides_Link} target="_blank" rel="noreferrer" className="text-orange-500 hover:text-orange-700" title="開啟簡報">
+                                                        <span className="material-icons">slideshow</span>
+                                                    </a>
+                                                ) : (
+                                                    <span className="material-icons text-gray-300 cursor-not-allowed">slideshow</span>
+                                                )}
+                                            </td>
+
+                                            {/* 8. 影片 */}
+                                            <td className="px-2 py-4 text-center">
+                                                {team.Video_Link ? (
+                                                    <a href={team.Video_Link} target="_blank" rel="noreferrer" className="text-red-500 hover:text-red-700" title="觀看影片">
+                                                        <span className="material-icons">movie</span>
+                                                    </a>
+                                                ) : (
+                                                    <span className="material-icons text-gray-300 cursor-not-allowed">movie</span>
+                                                )}
+                                            </td>
+
+                                            {/* 9. 雲端 */}
+                                            <td className="px-2 py-4 text-center">
+                                                {team.Drive_Link ? (
+                                                    <a href={team.Drive_Link} target="_blank" rel="noreferrer" className="text-green-600 hover:text-green-800" title="開啟雲端資料夾">
+                                                        <span className="material-icons">folder</span>
+                                                    </a>
+                                                ) : (
+                                                    <span className="material-icons text-gray-300 cursor-not-allowed">folder</span>
+                                                )}
+                                            </td>
+
+                                            {/* 10. 備註 (限制寬度) */}
+                                            <td className="px-3 py-4 text-sm text-gray-500 max-w-[100px] truncate" title={team.Memo}>
+                                                {team.Memo}
+                                            </td>
+
+                                            {/* 11. 操作 */}
+                                            <td className="px-3 py-4 text-sm text-right whitespace-nowrap">
+                                                <button onClick={() => openModal('edit', team)} className="text-indigo-600 hover:text-indigo-900 mr-3 font-medium">
+                                                    編輯
+                                                </button>
+                                                <button onClick={() => handleDelete(team.Team_ID, team.Group_Name)} className="text-red-600 hover:text-red-900 font-medium">
+                                                    刪除
                                                 </button>
                                             </td>
                                         </tr>
