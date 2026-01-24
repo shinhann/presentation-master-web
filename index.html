@@ -863,15 +863,18 @@
                                 <tr><td colSpan="11" className="px-6 py-4 text-center text-gray-500">無參賽隊伍資料</td></tr>
                             ) : (
                                 teams.map((team, idx) => {
-                                    // 資料讀取容錯 (優先讀取巢狀 basic，沒有則讀取平面欄位)
+                                    // 資料讀取容錯
                                     const displayYear = team.basic?.year || team.Competition_Year || team.year || '114';
-                                    const category = team.basic?.category || team.category || '';
+                                    
+                                    // ★ 關鍵修正：表頭為「參賽組別」，但讀取的是 group_name (隊名)
+                                    const displayGroup = team.basic?.group_name || team.group_name || '';
+                                    
                                     const school = team.basic?.school || team.school || '';
                                     const workTitle = team.basic?.work_title || team.work_title || '';
                                     const description = team.basic?.description || team.description || '';
                                     const memo = team.basic?.memo || team.memo || '';
                                     
-                                    // 連結資料容錯
+                                    // 連結資料
                                     const linkMindmap = team.links?.mindmap || team.link_mindmap;
                                     const linkSlides = team.links?.slides || team.link_slides;
                                     const linkVideo = team.links?.video || team.link_video;
@@ -892,18 +895,18 @@
                                             {/* 1. 年度 */}
                                             <td className="px-3 py-4 whitespace-nowrap text-sm text-gray-900">{displayYear}</td>
                                             
-                                            {/* 2. 組別 */}
-                                            <td className="px-3 py-4 whitespace-nowrap text-sm text-gray-500">{category}</td>
+                                            {/* 2. 參賽組別 (讀取 group_name) */}
+                                            <td className="px-3 py-4 whitespace-nowrap text-sm text-gray-900 font-medium">{displayGroup}</td>
                                             
                                             {/* 3. 學校 */}
-                                            <td className="px-3 py-4 whitespace-nowrap text-sm text-gray-900 font-medium">{school}</td>
+                                            <td className="px-3 py-4 whitespace-nowrap text-sm text-gray-500">{school}</td>
                                             
                                             {/* 4. 作品名稱 */}
                                             <td className="px-3 py-4 text-sm text-gray-900 max-w-[150px] truncate" title={workTitle}>
                                                 {workTitle}
                                             </td>
                                             
-                                            {/* 5. 作品說明 (限制寬度 + truncate) */}
+                                            {/* 5. 作品說明 */}
                                             <td className="px-3 py-4 text-sm text-gray-500 max-w-[200px] truncate" title={description}>
                                                 {description}
                                             </td>
