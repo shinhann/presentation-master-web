@@ -1007,207 +1007,343 @@
                     </table>
                 </div>
 
-                {/* Edit Modal */}
+{/* Edit Modal (UX 改版) */}
                 {isModalOpen && (
                     <div className="fixed inset-0 z-50 overflow-y-auto">
                         <div className="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:block sm:p-0">
-                            <div className="fixed inset-0 bg-gray-500 bg-opacity-75" onClick={() => setIsModalOpen(false)}></div>
+                            {/* 背景遮罩 */}
+                            <div className="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity" onClick={() => setIsModalOpen(false)}></div>
                             <span className="hidden sm:inline-block sm:align-middle sm:h-screen">&#8203;</span>
                             
-                            <div className="inline-block align-bottom bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-3xl w-full">
-                                <div className="bg-gray-100 px-4 py-3 border-b flex justify-between items-center">
-                                    <h3 className="text-lg font-medium text-gray-900">
+                            {/* Modal 本體 */}
+                            <div className="inline-block align-bottom bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-4xl w-full">
+                                
+                                {/* Header */}
+                                <div className="bg-gray-800 px-6 py-4 flex justify-between items-center">
+                                    <h3 className="text-xl font-bold text-white flex items-center">
+                                        <span className="material-icons mr-2">{modalMode === 'add' ? 'add_circle' : 'edit_note'}</span>
                                         {modalMode === 'add' ? '新增參賽隊伍' : '編輯隊伍資料'}
                                     </h3>
-                                    <button onClick={() => setIsModalOpen(false)} className="text-gray-400 hover:text-gray-500">
+                                    <button onClick={() => setIsModalOpen(false)} className="text-gray-400 hover:text-white transition-colors">
                                         <span className="material-icons">close</span>
                                     </button>
                                 </div>
 
-                                {/* Tabs Navigation */}
-                                <div className="bg-white border-b border-gray-200">
-                                    <nav className="-mb-px flex">
-                                        {[
-                                            { id: 'basic', label: '基本資料' },
-                                            { id: 'personnel', label: '人員編制' },
-                                            { id: 'contact', label: '聯絡窗口' },
-                                            { id: 'resources', label: '資源與備註' }
-                                        ].map(tab => (
-                                            <button
-                                                key={tab.id}
-                                                onClick={() => setActiveModalTab(tab.id)}
-                                                className={`w-1/4 py-4 px-1 text-center border-b-2 font-medium text-sm transition-colors
-                                                    ${activeModalTab === tab.id
-                                                        ? 'border-secondary text-secondary'
-                                                        : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                                                    }
-                                                `}
-                                            >
-                                                {tab.label}
-                                            </button>
-                                        ))}
-                                    </nav>
-                                </div>
-
-                                <div className="px-6 py-6 max-h-[60vh] overflow-y-auto">
-                                    {/* Tab 1: 基本資料 (更新 name 屬性為 PascalCase) */}
-                                    {activeModalTab === 'basic' && (
-                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                            <div>
-                                                <label className="block text-sm font-medium text-gray-700">年度</label>
-                                                <input type="number" name="Competition_Year" value={formData.Competition_Year} onChange={handleChange} className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:ring-secondary focus:border-secondary" />
+                                {/* Content Area */}
+                                <div className="px-6 py-6 max-h-[75vh] overflow-y-auto bg-gray-50">
+                                    
+                                    {/* --- 1. 基本資料區塊 --- */}
+                                    <div className="bg-white p-5 rounded-lg shadow-sm border border-gray-200 mb-6 relative overflow-hidden">
+                                        <div className="absolute top-0 left-0 w-1 h-full bg-blue-500"></div>
+                                        <h3 className="text-lg font-bold text-gray-800 mb-4 flex items-center border-b pb-2">
+                                            <span className="material-icons text-blue-500 mr-2 text-base">info</span>
+                                            基本資料
+                                        </h3>
+                                        
+                                        <div className="grid grid-cols-1 md:grid-cols-12 gap-6">
+                                            {/* 年度 (唯讀) */}
+                                            <div className="md:col-span-2">
+                                                <label className="block text-sm font-semibold text-gray-700 mb-1">年度</label>
+                                                <input 
+                                                    type="text" 
+                                                    name="Competition_Year" 
+                                                    value={formData.Competition_Year} 
+                                                    readOnly 
+                                                    className="w-full bg-gray-100 border border-gray-300 rounded px-3 py-2 text-gray-500 cursor-not-allowed text-center font-mono font-bold"
+                                                />
                                             </div>
-                                            <div>
-                                                <label className="block text-sm font-medium text-gray-700">參賽組別</label>
-                                                <select name="Group_Name" value={formData.Group_Name} onChange={handleChange} className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:ring-secondary focus:border-secondary bg-white">
+
+                                            {/* 組別 (下拉選單) */}
+                                            <div className="md:col-span-4">
+                                                <label className="block text-sm font-semibold text-gray-700 mb-1">參賽組別</label>
+                                                <select 
+                                                    name="Group_Name" 
+                                                    value={formData.Group_Name} 
+                                                    onChange={handleChange} 
+                                                    className="w-full border border-gray-300 rounded px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white"
+                                                >
+                                                    <option value="" disabled>請選擇組別</option>
                                                     {ALL_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
                                                 </select>
                                             </div>
-                                            <div className="md:col-span-2">
-                                                <label className="block text-sm font-medium text-gray-700">學校全銜</label>
-                                                <input type="text" name="School" value={formData.School} onChange={handleChange} className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:ring-secondary focus:border-secondary" placeholder="例如：宜蘭縣立復興國中" />
+
+                                            {/* 學校 */}
+                                            <div className="md:col-span-6">
+                                                <label className="block text-sm font-semibold text-gray-700 mb-1">學校全銜</label>
+                                                <input 
+                                                    type="text" 
+                                                    name="School" 
+                                                    value={formData.School} 
+                                                    onChange={handleChange} 
+                                                    className="w-full border border-gray-300 rounded px-3 py-2 focus:ring-2 focus:ring-blue-500" 
+                                                    placeholder="例如：宜蘭縣立復興國中" 
+                                                />
                                             </div>
-                                            <div className="md:col-span-2">
-                                                <label className="block text-sm font-medium text-gray-700">隊名</label>
-                                                <input type="text" name="Team_Name" value={formData.Team_Name} onChange={handleChange} className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:ring-secondary focus:border-secondary" />
+
+                                            {/* 作品名稱 (佔滿) */}
+                                            <div className="md:col-span-12">
+                                                <label className="block text-sm font-semibold text-gray-700 mb-1">作品名稱</label>
+                                                <input 
+                                                    type="text" 
+                                                    name="Work_Title" 
+                                                    value={formData.Work_Title} 
+                                                    onChange={handleChange} 
+                                                    className="w-full border border-gray-300 rounded px-3 py-2 focus:ring-2 focus:ring-blue-500 font-medium" 
+                                                    placeholder="請輸入完整作品名稱"
+                                                />
                                             </div>
-                                            <div className="md:col-span-2">
-                                                <label className="block text-sm font-medium text-gray-700">作品名稱</label>
-                                                <input type="text" name="Work_Title" value={formData.Work_Title} onChange={handleChange} className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:ring-secondary focus:border-secondary" />
-                                            </div>
-                                            <div className="md:col-span-2">
-                                                <label className="block text-sm font-medium text-gray-700">作品簡介</label>
-                                                <textarea name="Description" rows="3" value={formData.Description} onChange={handleChange} className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:ring-secondary focus:border-secondary"></textarea>
+
+                                            {/* 作品簡介 */}
+                                            <div className="md:col-span-12">
+                                                <label className="block text-sm font-semibold text-gray-700 mb-1">作品簡介</label>
+                                                <textarea 
+                                                    name="Description" 
+                                                    rows="3" 
+                                                    value={formData.Description} 
+                                                    onChange={handleChange} 
+                                                    className="w-full border border-gray-300 rounded px-3 py-2 focus:ring-2 focus:ring-blue-500"
+                                                    placeholder="請簡述作品概念..."
+                                                ></textarea>
                                             </div>
                                         </div>
-                                    )}
+                                    </div>
 
-                                    {/* Tab 2: 人員編制 (更新 name 屬性) */}
-                                    {activeModalTab === 'personnel' && (
+                                    {/* --- 2. 人員編制與聯絡窗口 --- */}
+                                    <div className="bg-white p-5 rounded-lg shadow-sm border border-gray-200 mb-6 relative overflow-hidden">
+                                        <div className="absolute top-0 left-0 w-1 h-full bg-green-500"></div>
+                                        <h3 className="text-lg font-bold text-gray-800 mb-4 flex items-center border-b pb-2">
+                                            <span className="material-icons text-green-500 mr-2 text-base">people</span>
+                                            人員編制
+                                        </h3>
+
                                         <div className="space-y-6">
-                                            <div>
-                                                <h4 className="text-sm font-bold text-gray-900 mb-2 border-b pb-1">參賽學生 (最多3位)</h4>
-                                                {[1, 2, 3].map(i => (
-                                                    <div key={`stu-${i}`} className="flex gap-2 mb-2 items-center">
-                                                        <span className="text-sm text-gray-500 w-12">學生{i}</span>
-                                                        <input 
-                                                            name={`Student${i}_Name`}
-                                                            type="text" placeholder="姓名" 
-                                                            value={formData[`Student${i}_Name`]} 
-                                                            onChange={handleChange}
-                                                            className="flex-1 border border-gray-300 rounded-md py-1 px-2 text-sm"
-                                                        />
-                                                        <input 
-                                                            name={`Student${i}_Email`}
-                                                            type="text" placeholder="Email (OpenID)" 
-                                                            value={formData[`Student${i}_Email`]} 
-                                                            onChange={handleChange}
-                                                            className="flex-1 border border-gray-300 rounded-md py-1 px-2 text-sm"
-                                                        />
-                                                    </div>
-                                                ))}
-                                            </div>
-                                            <div>
-                                                <h4 className="text-sm font-bold text-gray-900 mb-2 border-b pb-1">指導老師 (最多2位)</h4>
+                                            {/* 指導老師 */}
+                                            <div className="bg-green-50 p-4 rounded-md border border-green-100">
+                                                <h4 className="text-sm font-bold text-green-800 mb-3 flex items-center">
+                                                    <span className="material-icons text-sm mr-1">school</span>
+                                                    指導老師 (最多2位)
+                                                </h4>
                                                 {[1, 2].map(i => (
-                                                    <div key={`tea-${i}`} className="flex gap-2 mb-2 items-center">
-                                                        <span className="text-sm text-gray-500 w-12">老師{i}</span>
-                                                        <input 
-                                                            name={`Teacher${i}_Name`}
-                                                            type="text" placeholder="姓名" 
-                                                            value={formData[`Teacher${i}_Name`]} 
-                                                            onChange={handleChange}
-                                                            className="flex-1 border border-gray-300 rounded-md py-1 px-2 text-sm"
-                                                        />
-                                                        <input 
-                                                            name={`Teacher${i}_Email`}
-                                                            type="text" placeholder="Email" 
-                                                            value={formData[`Teacher${i}_Email`]} 
-                                                            onChange={handleChange}
-                                                            className="flex-1 border border-gray-300 rounded-md py-1 px-2 text-sm"
-                                                        />
+                                                    <div key={`tea-${i}`} className="flex flex-col sm:flex-row gap-3 mb-3 last:mb-0">
+                                                        <div className="sm:w-1/3">
+                                                            <input 
+                                                                name={`Teacher${i}_Name`}
+                                                                type="text" 
+                                                                placeholder={`老師 ${i} 姓名`}
+                                                                value={formData[`Teacher${i}_Name`]} 
+                                                                onChange={handleChange}
+                                                                className="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:border-green-500 focus:ring-1 focus:ring-green-500"
+                                                            />
+                                                        </div>
+                                                        <div className="sm:w-2/3">
+                                                            <input 
+                                                                name={`Teacher${i}_Email`}
+                                                                type="text" 
+                                                                placeholder="教師EIP帳號@tmail.ilc.edu.tw"
+                                                                value={formData[`Teacher${i}_Email`]} 
+                                                                onChange={handleChange}
+                                                                className="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:border-green-500 focus:ring-1 focus:ring-green-500"
+                                                            />
+                                                        </div>
                                                     </div>
                                                 ))}
                                             </div>
-                                        </div>
-                                    )}
 
-                                    {/* Tab 3: 聯絡窗口 */}
-                                    {activeModalTab === 'contact' && (
+                                            {/* 參賽學生 */}
+                                            <div className="bg-gray-50 p-4 rounded-md border border-gray-200">
+                                                <h4 className="text-sm font-bold text-gray-700 mb-3 flex items-center">
+                                                    <span className="material-icons text-sm mr-1">face</span>
+                                                    參賽學生 (最多3位)
+                                                </h4>
+                                                {[1, 2, 3].map(i => (
+                                                    <div key={`stu-${i}`} className="flex flex-col sm:flex-row gap-3 mb-3 last:mb-0">
+                                                        <div className="sm:w-1/3">
+                                                            <input 
+                                                                name={`Student${i}_Name`}
+                                                                type="text" 
+                                                                placeholder={`學生 ${i} 姓名`}
+                                                                value={formData[`Student${i}_Name`]} 
+                                                                onChange={handleChange}
+                                                                className="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:ring-gray-400"
+                                                            />
+                                                        </div>
+                                                        <div className="sm:w-2/3">
+                                                            <input 
+                                                                name={`Student${i}_Email`}
+                                                                type="text" 
+                                                                placeholder="快樂e學院帳號@smail.ilc.edu.tw"
+                                                                value={formData[`Student${i}_Email`]} 
+                                                                onChange={handleChange}
+                                                                className="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:ring-gray-400"
+                                                            />
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                            </div>
+
+                                            {/* 聯絡窗口 (整合) */}
+                                            <div className="mt-4 pt-4 border-t-2 border-dashed border-gray-200">
+                                                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-3">
+                                                    <label className="font-bold text-gray-800 flex items-center gap-2 mb-2 sm:mb-0">
+                                                        <span className="material-icons text-orange-500">contact_phone</span>
+                                                        聯絡窗口
+                                                        <span className="text-xs font-normal text-red-500 bg-red-50 px-2 py-1 rounded border border-red-100 ml-2">
+                                                            (限校內教師，請勿填寫家長)
+                                                        </span>
+                                                    </label>
+                                                    <div className="flex gap-2">
+                                                        <button 
+                                                            type="button"
+                                                            onClick={() => quickImportContact(1)}
+                                                            className="text-xs flex items-center bg-white border border-green-300 text-green-700 px-2 py-1 rounded hover:bg-green-50 transition shadow-sm"
+                                                        >
+                                                            <span className="material-icons text-[14px] mr-1">content_copy</span>
+                                                            帶入老師1
+                                                        </button>
+                                                        <button 
+                                                            type="button"
+                                                            onClick={() => quickImportContact(2)}
+                                                            className="text-xs flex items-center bg-white border border-green-300 text-green-700 px-2 py-1 rounded hover:bg-green-50 transition shadow-sm"
+                                                        >
+                                                            <span className="material-icons text-[14px] mr-1">content_copy</span>
+                                                            帶入老師2
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                                    <div>
+                                                        <label className="block text-xs text-gray-500 mb-1">聯絡人姓名</label>
+                                                        <input 
+                                                            type="text" 
+                                                            name="Contact_Person" 
+                                                            value={formData.Contact_Person} 
+                                                            onChange={handleChange} 
+                                                            className="w-full border border-gray-300 rounded px-3 py-2" 
+                                                            placeholder="請輸入姓名"
+                                                        />
+                                                    </div>
+                                                    <div>
+                                                        <label className="block text-xs text-gray-500 mb-1">聯絡電話</label>
+                                                        <input 
+                                                            type="text" 
+                                                            name="Contact_Phone" 
+                                                            value={formData.Contact_Phone} 
+                                                            onChange={handleChange} 
+                                                            className="w-full border border-gray-300 rounded px-3 py-2" 
+                                                            placeholder="0900-000-000"
+                                                        />
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* --- 3. 資源連結與備註 --- */}
+                                    <div className="bg-white p-5 rounded-lg shadow-sm border border-gray-200 relative overflow-hidden">
+                                        <div className="absolute top-0 left-0 w-1 h-full bg-yellow-400"></div>
+                                        <h3 className="text-lg font-bold text-gray-800 mb-4 flex items-center border-b pb-2">
+                                            <span className="material-icons text-yellow-500 mr-2 text-base">link</span>
+                                            資源連結
+                                        </h3>
+
+                                        {/* 權限警語 */}
+                                        <div className="mb-4 p-3 bg-yellow-50 border border-yellow-200 text-yellow-800 text-sm rounded flex items-start">
+                                            <span className="material-icons text-yellow-600 mr-2 text-lg">warning</span>
+                                            <p className="font-medium">
+                                                請務必確認雲端檔案權限已開啟為「<span className="text-red-600 font-bold underline">知道連結的使用者皆可檢視</span>」，否則評審無法評分！
+                                            </p>
+                                        </div>
+
                                         <div className="space-y-4">
-                                            <div className="flex space-x-2 mb-4">
-                                                <button type="button" onClick={() => quickImportContact(1)} className="text-xs bg-gray-200 hover:bg-gray-300 px-2 py-1 rounded">同指導老師1</button>
-                                                <button type="button" onClick={() => quickImportContact(2)} className="text-xs bg-gray-200 hover:bg-gray-300 px-2 py-1 rounded">同指導老師2</button>
-                                            </div>
-                                            <div>
-                                                <label className="block text-sm font-medium text-gray-700">聯絡人姓名</label>
-                                                <input type="text" name="Contact_Person" value={formData.Contact_Person} onChange={handleChange} className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:ring-secondary focus:border-secondary" />
-                                            </div>
-                                            <div>
-                                                <label className="block text-sm font-medium text-gray-700">聯絡電話</label>
-                                                <input type="text" name="Contact_Phone" value={formData.Contact_Phone} onChange={handleChange} className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:ring-secondary focus:border-secondary" />
-                                            </div>
-                                        </div>
-                                    )}
-
-                                    {/* Tab 4: 資源與備註 */}
-                                    {activeModalTab === 'resources' && (
-                                        <div className="space-y-3">
                                             {[
-                                                { k: 'MindMap_Link', l: '心智圖連結' },
-                                                { k: 'Slides_Link', l: '簡報連結' },
-                                                { k: 'Video_Link', l: '影片連結' },
-                                                { k: 'Consent_Link', l: '著作權同意書' },
-                                                { k: 'Drive_Link', l: '雲端資料夾' }
+                                                { k: 'MindMap_Link', l: '心智圖連結', i: 'psychology' },
+                                                { k: 'Slides_Link', l: '簡報連結', i: 'slideshow' },
+                                                { k: 'Video_Link', l: '影片連結', i: 'movie' },
+                                                { k: 'Drive_Link', l: '雲端資料夾', i: 'folder' },
+                                                { k: 'Consent_Link', l: '著作權同意書', i: 'verified' }
                                             ].map(item => (
                                                 <div key={item.k}>
-                                                    <label className="block text-xs font-medium text-gray-500">{item.l}</label>
-                                                    <input type="url" name={item.k} value={formData[item.k]} onChange={handleChange} className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-1 px-2 text-sm focus:ring-secondary focus:border-secondary" placeholder="https://..." />
+                                                    <label className="flex items-center text-sm font-semibold text-gray-700 mb-1">
+                                                        <span className="material-icons text-gray-400 text-sm mr-1">{item.i}</span>
+                                                        {item.l}
+                                                    </label>
+                                                    <input 
+                                                        type="url" 
+                                                        name={item.k} 
+                                                        value={formData[item.k]} 
+                                                        onChange={handleChange} 
+                                                        className="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:ring-2 focus:ring-yellow-400 focus:border-yellow-400 font-mono text-blue-600" 
+                                                        placeholder="https://..." 
+                                                    />
                                                 </div>
                                             ))}
-                                            <div>
-                                                <label className="block text-xs font-medium text-gray-500">連結備註</label>
-                                                <input type="text" name="Link_Note" value={formData.Link_Note} onChange={handleChange} className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-1 px-2 text-sm" />
-                                            </div>
-                                            <div className="pt-2 border-t mt-4 bg-yellow-50 p-2 rounded">
-                                                <label className="block text-sm font-bold text-gray-700">管理員專用備註 (Memo)</label>
-                                                <textarea name="Memo" value={formData.Memo} onChange={handleChange} rows="2" className="mt-1 block w-full border border-yellow-300 bg-white rounded-md shadow-sm py-2 px-3 focus:ring-yellow-500 focus:border-yellow-500 text-sm"></textarea>
+                                            
+                                            <div className="pt-4 mt-4 border-t border-gray-100">
+                                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                                    <div>
+                                                        <label className="block text-sm font-semibold text-gray-700 mb-1">連結備註</label>
+                                                        <input type="text" name="Link_Note" value={formData.Link_Note} onChange={handleChange} className="w-full border border-gray-300 rounded px-3 py-2 text-sm" placeholder="例如：影片密碼 1234" />
+                                                    </div>
+                                                    <div>
+                                                        <label className="block text-sm font-bold text-gray-700 mb-1 flex items-center">
+                                                            管理員備註
+                                                            <span className="ml-2 text-[10px] bg-gray-200 text-gray-600 px-1 rounded">僅管理員可見</span>
+                                                        </label>
+                                                        <input type="text" name="Memo" value={formData.Memo} onChange={handleChange} className="w-full border border-yellow-300 bg-yellow-50 rounded px-3 py-2 text-sm" placeholder="內部註記..." />
+                                                    </div>
+                                                </div>
                                             </div>
                                         </div>
-                                    )}
+                                    </div>
+
                                 </div>
 
-                                {/* Footer */}
-                                <div className="bg-gray-50 px-4 py-3 sm:px-6 sm:flex sm:flex-row-reverse justify-between">
-                                    <div className="flex sm:flex-row-reverse w-full">
+                                {/* Footer Action Buttons */}
+                                <div className="bg-gray-100 px-6 py-4 flex flex-row-reverse items-center justify-between border-t border-gray-200">
+                                    <div className="flex gap-3">
+                                        <button 
+                                            type="button" 
+                                            onClick={() => setIsModalOpen(false)}
+                                            className="px-5 py-2 bg-white border border-gray-300 rounded shadow-sm text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
+                                        >
+                                            取消
+                                        </button>
                                         <button 
                                             type="button" 
                                             onClick={handleSave} 
                                             disabled={isSaving}
-                                            className={`w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 text-base font-medium text-white sm:ml-3 sm:w-auto sm:text-sm
-                                                ${isSaving ? 'bg-gray-400' : 'bg-secondary hover:bg-orange-700'}
+                                            className={`px-6 py-2 rounded shadow-sm text-sm font-medium text-white transition-all
+                                                ${isSaving 
+                                                    ? 'bg-gray-400 cursor-not-allowed' 
+                                                    : 'bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800'
+                                                }
                                             `}
                                         >
-                                            {isSaving ? '儲存中...' : '儲存'}
-                                        </button>
-                                        <button 
-                                            type="button" 
-                                            onClick={() => setIsModalOpen(false)}
-                                            className="mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 sm:mt-0 sm:ml-3 sm:w-auto sm:text-sm"
-                                        >
-                                            取消
+                                            {isSaving ? (
+                                                <span className="flex items-center">
+                                                    <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" fill="none" viewBox="0 0 24 24">
+                                                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                                    </svg>
+                                                    儲存中...
+                                                </span>
+                                            ) : '確認儲存'}
                                         </button>
                                     </div>
+                                    
                                     {modalMode === 'edit' && (
                                         <button 
                                             type="button"
                                             onClick={() => {
-                                                setIsModalOpen(false);
-                                                handleDelete(formData.Team_ID, formData.Group_Name);
+                                                if(confirm(`確定要刪除「${formData.Work_Title || '此隊伍'}」嗎？`)) {
+                                                    setIsModalOpen(false);
+                                                    handleDelete(formData.Team_ID, formData.Group_Name);
+                                                }
                                             }}
-                                            className="mt-3 w-auto inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-red-100 text-base font-medium text-red-700 hover:bg-red-200 sm:mt-0 sm:text-sm"
+                                            className="text-red-600 hover:text-red-800 text-sm font-medium flex items-center px-2 py-1 hover:bg-red-50 rounded transition-colors"
                                         >
-                                            刪除隊伍
+                                            <span className="material-icons text-sm mr-1">delete_forever</span>
+                                            刪除此隊伍
                                         </button>
                                     )}
                                 </div>
@@ -1215,9 +1351,6 @@
                         </div>
                     </div>
                 )}
-            </div>
-        );
-    };
 
 // --- 管理員後台框架 (AdminDashboard) ---Jan 24 18:34 update
     const AdminDashboard = ({ user, onLogout }) => {
