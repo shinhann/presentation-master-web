@@ -1349,7 +1349,7 @@
         );
     };
 
-// --- 系統設定與評審管理元件 (SystemSettings) ---
+// --- 系統設定與評審管理元件 (SystemSettings) ---20260228 2229
     // 接收來自 AdminDashboard 傳下來的 selectedYear
     const SystemSettings = ({ selectedYear }) => {
         const [hasConfig, setHasConfig] = useState(true);
@@ -1396,37 +1396,31 @@
                 const result = await response.json();
                 
                 if (result.status === 'success' && result.data && Object.keys(result.data).length > 0) {
-                    // ★ PM 修正指令：確保 categories 解析為穩定物件
+                    const data = result.data;
+                    
+                    // 1. 處理組別資料 (相容 categories 與 Category_Group_Map)
+                    let rawCats = data.categories || data.Category_Group_Map || data.category_group_map;
                     let parsedCats = {};
-                    if (result.data.categories) {
-                        let rawData = result.data.categories;
-                        // 如果是字串，先 parse
-                        if (typeof rawData === 'string') {
-                            try { 
-                                rawData = JSON.parse(rawData); 
-                            } catch (e) { 
-                                console.warn("Categories parse error"); 
-                                rawData = {}; 
-                            }
-                        }
-                        
-                        // 強制轉型：如果是陣列（例如 []），就轉成物件
-                        if (Array.isArray(rawData)) {
-                            parsedCats = rawData.length > 0 ? { "未分類": rawData } : {};
-                        } else if (typeof rawData === 'object' && rawData !== null) {
-                            parsedCats = rawData;
+                    
+                    if (rawCats) {
+                        if (typeof rawCats === 'string') {
+                            try { parsedCats = JSON.parse(rawCats); } catch (e) { console.warn("Categories parse error"); }
+                        } else if (typeof rawCats === 'object' && rawCats !== null) {
+                            parsedCats = Array.isArray(rawCats) ? (rawCats.length > 0 ? { "未分類": rawCats } : {}) : rawCats;
                         }
                     }
-                    setConfig({ ...result.data, categories: parsedCats });
+
+                    // 2. 處理其他設定值 (相容前端 state 與後端 DB 欄位命名)
+                    setConfig({
+                        current_year: data.current_year || data.Competition_Year || selectedYear,
+                        is_registration_open: data.is_registration_open ?? (data.Is_Active === true || data.Is_Active === 'TRUE'),
+                        is_judging_open: data.is_judging_open ?? (data.System_Lock === false || data.System_Lock === 'FALSE'), // 假設 Lock 為 false 代表開放評分
+                        categories: parsedCats
+                    });
                     setHasConfig(true);
                 } else {
                     setHasConfig(false);
-                    setConfig({
-                        current_year: selectedYear,
-                        is_registration_open: false,
-                        is_judging_open: false,
-                        categories: {}
-                    });
+                    setConfig({ current_year: selectedYear, is_registration_open: false, is_judging_open: false, categories: {} });
                 }
             } catch (err) {
                 console.warn("無法取得系統設定", err);
@@ -1536,13 +1530,26 @@
         const saveSystemConfig = async () => {
             setIsConfigSaving(true);
             try {
+                // 準備雙重相容的 Payload，確保後端不管用哪個 Key 都接得到
+                const catString = JSON.stringify(config.categories || {});
                 const payload = { 
                     action: 'saveSystemConfig', 
                     API_Key: API_KEY, 
                     year: selectedYear, 
-                    ...config,
-                    categories: JSON.stringify(config.categories || {}) 
+                    
+                    // 前端慣用 Key
+                    current_year: config.current_year,
+                    is_registration_open: config.is_registration_open,
+                    is_judging_open: config.is_judging_open,
+                    categories: catString,
+                    
+                    // 後端資料庫對應 Key (保險起見一併傳送)
+                    Competition_Year: config.current_year,
+                    Is_Active: config.is_registration_open,
+                    System_Lock: !config.is_judging_open,
+                    Category_Group_Map: catString
                 };
+                
                 const response = await fetch(API_URL, { method: 'POST', body: JSON.stringify(payload) });
                 const result = await response.json();
                 if (result.status === 'success') {
@@ -1873,7 +1880,7 @@
                 )}
             </div>
         );
-    };
+    };;
     
 // --- 管理員後台框架 (AdminDashboard) --- 20280228 1812 update
     const AdminDashboard = ({ user, onLogout }) => {
