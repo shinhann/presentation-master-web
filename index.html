@@ -650,7 +650,8 @@
     };
 
 // --- 隊伍資源管理元件 (TeamManager) ---
-    const TeamManager = () => {
+    // 接收來自 AdminDashboard 傳下來的 selectedYear
+    const TeamManager = ({ selectedYear }) => {
         const [teams, setTeams] = useState([]);
         const [isLoading, setIsLoading] = useState(false);
         
@@ -663,20 +664,20 @@
         const [modalMode, setModalMode] = useState('add');
         const [activeModalTab, setActiveModalTab] = useState('basic'); 
         const [isSaving, setIsSaving] = useState(false);
-        const [editingTeam, setEditingTeam] = useState(null); // 紀錄目前編輯的原始物件
+        const [editingTeam, setEditingTeam] = useState(null);
 
         // 初始表單狀態 (扁平化結構)
         const initialFormState = {
             Team_ID: '',
-            Competition_Year: (new Date().getFullYear() - 1911).toString(),
+            Competition_Year: selectedYear, // 預設帶入全域年度
             
             // 基本資料
-            Group_Name: ALL_CATEGORIES[0], // 對應「參賽組別」
-            Team_Name: '',                 // 對應「隊名」
+            Group_Name: ALL_CATEGORIES[0],
+            Team_Name: '',
             School: '',
             Work_Title: '',
             Description: '',
-            Category: '', // 保留欄位，若後端需要
+            Category: '',
             
             // 學生資料
             Student1_Name: '', Student1_Email: '',
@@ -711,29 +712,31 @@
             try {
                 const response = await fetch(API_URL, {
                     method: 'POST',
-                    body: JSON.stringify({ action: 'getAllTeams', API_Key: API_KEY })
+                    // API payload 補上 year
+                    body: JSON.stringify({ action: 'getAllTeams', API_Key: API_KEY, year: selectedYear })
                 });
                 const result = await response.json();
                 if (result.status === 'success') {
-                    // 依照 Group_Name 排序
                     const sorted = result.data.sort((a, b) => {
                         return (a.Group_Name || '').localeCompare(b.Group_Name || '');
                     });
                     setTeams(sorted);
                 } else {
-                    console.warn("讀取失敗:", result.message);
+                    setTeams([]);
                 }
             } catch (err) {
                 console.error("Fetch Teams Error:", err);
                 alert("無法讀取隊伍資料");
+                setTeams([]);
             } finally {
                 setIsLoading(false);
             }
         };
 
+        // 當 selectedYear 改變時，自動重新撈取資料
         useEffect(() => {
             fetchTeams();
-        }, []);
+        }, [selectedYear]);
 
         // --- 搜尋與篩選邏輯 ---
         const getDeepString = (obj) => {
@@ -762,14 +765,12 @@
             return 'bg-gray-100 text-gray-800';
         };
 
-        // --- 表單處理邏輯 (Generic Handler) ---
-        // 因為是扁平結構，一個 Handler 搞定所有欄位
+        // --- 表單處理邏輯 ---
         const handleChange = (e) => {
             const { name, value } = e.target;
             setFormData(prev => ({ ...prev, [name]: value }));
         };
 
-        // 快速帶入聯絡人
         const quickImportContact = (teacherNum) => {
             const name = formData[`Teacher${teacherNum}_Name`];
             if (name) {
@@ -779,28 +780,29 @@
             }
         };
 
-        // 2. 開啟 Modal (新增/編輯)
+        // 2. 開啟 Modal
         const openModal = (mode, team = null) => {
             setModalMode(mode);
             setActiveModalTab('basic');
 
             if (mode === 'edit' && team) {
                 setEditingTeam(team);
-                // ★ 關鍵修改：直接將扁平化的 team 資料塞入 formData，並與預設值合併以防欄位缺失
                 setFormData({
                     ...initialFormState,
-                    ...team // 直接覆蓋
+                    ...team 
                 });
             } else {
                 setEditingTeam(null);
-                setFormData(initialFormState);
+                setFormData({
+                    ...initialFormState,
+                    Competition_Year: selectedYear // 確保新增時帶入當前選定年度
+                });
             }
             setIsModalOpen(true);
         };
 
-        // 3. 儲存資料 (handleSave)
+        // 3. 儲存資料
         const handleSave = async () => {
-            // 簡易驗證
             if (!formData.Competition_Year || !formData.School || !formData.Group_Name) {
                 alert("請填寫年度、學校與參賽組別等基本資料");
                 return;
@@ -808,44 +810,36 @@
 
             setIsSaving(true);
             try {
-                // ★ 關鍵修改：建立完全符合後端要求的 Payload
                 const payload = {
                     action: 'saveTeam',
                     API_Key: API_KEY,
 
-                    // 確保 ID 存在 (編輯時用舊 ID，新增時後端會產)
                     Team_ID: editingTeam?.Team_ID || '', 
                     Competition_Year: formData.Competition_Year,
                     
-                    // 基本資料
-                    Category: formData.Category, // 預留
+                    Category: formData.Category,
                     Group_Name: formData.Group_Name,
-                    Team_Name: formData.Team_Name, // 補上隊名
+                    Team_Name: formData.Team_Name,
                     School: formData.School,
                     Work_Title: formData.Work_Title,
                     Description: formData.Description,
 
-                    // 學生資料
                     Student1_Name: formData.Student1_Name, Student1_Email: formData.Student1_Email,
                     Student2_Name: formData.Student2_Name, Student2_Email: formData.Student2_Email,
                     Student3_Name: formData.Student3_Name, Student3_Email: formData.Student3_Email,
 
-                    // 老師資料
                     Teacher1_Name: formData.Teacher1_Name, Teacher1_Email: formData.Teacher1_Email,
                     Teacher2_Name: formData.Teacher2_Name, Teacher2_Email: formData.Teacher2_Email,
 
-                    // 其他
                     Contact_Person: formData.Contact_Person,
                     Contact_Phone: formData.Contact_Phone,
                     
-                    // 連結
                     MindMap_Link: formData.MindMap_Link,
                     Slides_Link: formData.Slides_Link,
                     Video_Link: formData.Video_Link,
                     Consent_Link: formData.Consent_Link,
                     Drive_Link: formData.Drive_Link,
                     
-                    // 備註
                     Link_Note: formData.Link_Note,
                     Memo: formData.Memo
                 };
@@ -876,7 +870,8 @@
             try {
                 const response = await fetch(API_URL, {
                     method: 'POST',
-                    body: JSON.stringify({ action: 'deleteTeam', API_Key: API_KEY, team_id: teamId })
+                    // API payload 補上 year，確保刪除對應年度資料
+                    body: JSON.stringify({ action: 'deleteTeam', API_Key: API_KEY, team_id: teamId, year: selectedYear })
                 });
                 const result = await response.json();
                 if (result.status === 'success') {
@@ -898,7 +893,7 @@
                 <div className="flex justify-between items-center mb-6">
                     <h2 className="text-xl font-bold text-gray-800 flex items-center gap-2">
                         <span className="material-icons text-primary">groups</span>
-                        參賽隊伍管理
+                        參賽隊伍管理 <span className="text-sm font-normal text-gray-500 ml-2">({selectedYear} 年度)</span>
                     </h2>
                     <button 
                         onClick={() => openModal('add')}
@@ -955,18 +950,21 @@
                                 <tr><td colSpan="11" className="px-6 py-4 text-center text-gray-500">載入中...</td></tr>
                             ) : filteredTeams.length === 0 ? (
                                 <tr><td colSpan="11" className="px-6 py-4 text-center text-gray-500">
-                                    {searchTerm ? '找不到符合關鍵字的隊伍' : '目前無參賽隊伍資料'}
+                                    {searchTerm ? '找不到符合關鍵字的隊伍' : '此年度目前無參賽隊伍資料'}
                                 </td></tr>
                             ) : (
                                 filteredTeams.map((team, index) => {
                                     const teamId = team.Team_ID || team.id || index;
-                                    const teacherStr = [team.Teacher1_Name, team.Teacher2_Name].filter(Boolean).join('、');
-                                    const studentStr = [team.Student1_Name, team.Student2_Name, team.Student3_Name].filter(Boolean).join('、');
-                                    const memberTooltip = `指導老師: ${teacherStr}\n參賽學生: ${studentStr}`;
+                                    
+                                    // 連結資料處理
+                                    const linkMindmap = team.MindMap_Link || team.Link_Mindmap;
+                                    const linkSlides = team.Slides_Link || team.Link_Slides;
+                                    const linkVideo = team.Video_Link || team.Link_Video;
+                                    const linkDrive = team.Drive_Link || team.Link_Drive;
 
                                     return (
                                         <tr key={teamId} className="hover:bg-gray-50 border-b">
-                                            <td className="px-3 py-4 text-sm text-gray-500 whitespace-nowrap">{team.Competition_Year || '114'}</td>
+                                            <td className="px-3 py-4 text-sm text-gray-500 whitespace-nowrap">{team.Competition_Year || team.Year || selectedYear}</td>
                                             
                                             <td className="px-3 py-4 text-sm whitespace-nowrap">
                                                 <span className={`px-2 py-1 font-semibold text-xs rounded-full whitespace-nowrap ${getGroupColor(team.Group_Name)}`}>
@@ -974,26 +972,24 @@
                                                 </span>
                                             </td>
 
-                                            <td className="px-3 py-4 text-sm text-gray-700 font-medium whitespace-nowrap">{team.School}</td>
+                                            <td className="px-3 py-4 text-sm text-gray-700 whitespace-nowrap">{team.School}</td>
                                             <td className="px-3 py-4 text-sm font-bold text-gray-900 max-w-[160px] truncate" title={team.Work_Title}>{team.Work_Title}</td>
                                             <td className="px-3 py-4 text-sm text-gray-500 max-w-xs truncate" title={team.Description}>{team.Description}</td>
 
                                             <td className="px-2 py-4 text-center">
-                                                {team.MindMap_Link ? <a href={team.MindMap_Link} target="_blank" rel="noreferrer" className="no-underline text-xl">🗺️</a> : <span className="opacity-20 text-xl grayscale cursor-default">🗺️</span>}
+                                                {linkMindmap ? <a href={linkMindmap} target="_blank" rel="noreferrer" className="no-underline text-xl">🗺️</a> : <span className="opacity-20 text-xl grayscale cursor-default">🗺️</span>}
                                             </td>
                                             <td className="px-2 py-4 text-center">
-                                                {team.Slides_Link ? <a href={team.Slides_Link} target="_blank" rel="noreferrer" className="no-underline text-xl">📊</a> : <span className="opacity-20 text-xl grayscale cursor-default">📊</span>}
+                                                {linkSlides ? <a href={linkSlides} target="_blank" rel="noreferrer" className="no-underline text-xl">📊</a> : <span className="opacity-20 text-xl grayscale cursor-default">📊</span>}
                                             </td>
                                             <td className="px-2 py-4 text-center">
-                                                {team.Video_Link ? <a href={team.Video_Link} target="_blank" rel="noreferrer" className="no-underline text-xl">🎬</a> : <span className="opacity-20 text-xl grayscale cursor-default">🎬</span>}
+                                                {linkVideo ? <a href={linkVideo} target="_blank" rel="noreferrer" className="no-underline text-xl">🎬</a> : <span className="opacity-20 text-xl grayscale cursor-default">🎬</span>}
                                             </td>
                                             <td className="px-2 py-4 text-center">
-                                                {team.Drive_Link ? <a href={team.Drive_Link} target="_blank" rel="noreferrer" className="no-underline text-xl">☁️</a> : <span className="opacity-20 text-xl grayscale cursor-default">☁️</span>}
+                                                {linkDrive ? <a href={linkDrive} target="_blank" rel="noreferrer" className="no-underline text-xl">☁️</a> : <span className="opacity-20 text-xl grayscale cursor-default">☁️</span>}
                                             </td>
 
-                                            <td className="px-3 py-4 text-sm text-gray-500 max-w-[100px] truncate" title={`${team.Link_Note || ''} ${team.Memo || ''}`}>
-                                                {team.Memo}
-                                            </td>
+                                            <td className="px-3 py-4 text-sm text-gray-500 max-w-[100px] truncate" title={team.Memo}>{team.Memo}</td>
 
                                             <td className="px-3 py-4 text-sm text-right whitespace-nowrap">
                                                 <button onClick={() => openModal('edit', team)} className="text-indigo-600 hover:text-indigo-900 mr-3 font-medium">編輯</button>
@@ -1007,15 +1003,13 @@
                     </table>
                 </div>
 
-{/* Edit Modal (UX 改版) */}
+                {/* Edit Modal (UX 改版) */}
                 {isModalOpen && (
                     <div className="fixed inset-0 z-50 overflow-y-auto">
                         <div className="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:block sm:p-0">
-                            {/* 背景遮罩 */}
                             <div className="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity" onClick={() => setIsModalOpen(false)}></div>
                             <span className="hidden sm:inline-block sm:align-middle sm:h-screen">&#8203;</span>
                             
-                            {/* Modal 本體 */}
                             <div className="inline-block align-bottom bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-4xl w-full">
                                 
                                 {/* Header */}
@@ -1355,14 +1349,19 @@
         );
     };
 
-// --- 系統設定與評審管理元件 (SystemSettings) --- 2026/2/28 新增功能
-    const SystemSettings = () => {
+// --- 系統設定與評審管理元件 (SystemSettings) --- 20280228 1813 update
+    // 接收來自 AdminDashboard 傳下來的 selectedYear
+    const SystemSettings = ({ selectedYear }) => {
+        // 判斷該年度是否有設定檔的狀態
+        const [hasConfig, setHasConfig] = useState(true);
+        const [isCopying, setIsCopying] = useState(false);
+
         // ================= 1. 左半部：全域參數設定狀態 =================
         const [config, setConfig] = useState({
-            current_year: new Date().getFullYear() - 1911,
+            current_year: selectedYear,
             is_registration_open: false,
             is_judging_open: false,
-            categories: ["宜蘭在地國中組", "宜蘭在地國小組", "環境永續國中組", "環境永續國小組", "校訂課程國中組", "校訂課程國小組"]
+            categories: []
         });
         const [newCategory, setNewCategory] = useState('');
         const [isConfigLoading, setIsConfigLoading] = useState(false);
@@ -1383,7 +1382,6 @@
             Password: '',
             Categories: []
         });
-        const [editingJudgeId, setEditingJudgeId] = useState(null);
 
         // ================= 3. 資料載入 (API) =================
         const fetchSystemConfig = async () => {
@@ -1391,14 +1389,27 @@
             try {
                 const response = await fetch(API_URL, {
                     method: 'POST',
-                    body: JSON.stringify({ action: 'getSystemConfig', API_Key: API_KEY })
+                    // API payload 補上 year
+                    body: JSON.stringify({ action: 'getSystemConfig', API_Key: API_KEY, year: selectedYear })
                 });
                 const result = await response.json();
-                if (result.status === 'success' && result.data) {
+                
+                if (result.status === 'success' && result.data && Object.keys(result.data).length > 0) {
                     setConfig(result.data);
+                    setHasConfig(true);
+                } else {
+                    // 該年度沒有資料
+                    setHasConfig(false);
+                    setConfig({
+                        current_year: selectedYear,
+                        is_registration_open: false,
+                        is_judging_open: false,
+                        categories: []
+                    });
                 }
             } catch (err) {
                 console.warn("無法取得系統設定", err);
+                setHasConfig(false);
             } finally {
                 setIsConfigLoading(false);
             }
@@ -1409,28 +1420,68 @@
             try {
                 const response = await fetch(API_URL, {
                     method: 'POST',
-                    body: JSON.stringify({ action: 'getAllJudges', API_Key: API_KEY })
+                    // API payload 補上 year
+                    body: JSON.stringify({ action: 'getAllJudges', API_Key: API_KEY, year: selectedYear })
                 });
                 const result = await response.json();
                 if (result.status === 'success') {
                     const sorted = result.data.sort((a, b) => {
-                        const yearA = a.Competition_Year || a.year || 0;
-                        const yearB = b.Competition_Year || b.year || 0;
-                        return yearB - yearA;
+                        const codeA = a.judge_code || '';
+                        const codeB = b.judge_code || '';
+                        return codeA.localeCompare(codeB);
                     });
                     setJudges(sorted);
+                } else {
+                    setJudges([]); // 若無資料清空陣列
                 }
             } catch (err) {
                 console.error("無法取得評審列表", err);
+                setJudges([]);
             } finally {
                 setIsJudgesLoading(false);
             }
         };
 
+        // 當 selectedYear 改變時，重新撈取資料
         useEffect(() => {
             fetchSystemConfig();
             fetchJudges();
-        }, []);
+        }, [selectedYear]);
+
+        // ================= 複製上年度設定邏輯 =================
+        const handleCopyYearData = async () => {
+            const sourceYear = (parseInt(selectedYear) - 1).toString();
+            if (!confirm(`確定要將「${sourceYear} 年度」的設定與評審名單，複製到「${selectedYear} 年度」嗎？`)) return;
+            
+            setIsCopying(true);
+            try {
+                const payload = {
+                    action: 'copyYearData',
+                    API_Key: API_KEY,
+                    sourceYear: sourceYear,
+                    targetYear: selectedYear
+                };
+                const response = await fetch(API_URL, {
+                    method: 'POST',
+                    body: JSON.stringify(payload)
+                });
+                const result = await response.json();
+                
+                if (result.status === 'success') {
+                    alert(`已成功建立 ${selectedYear} 年度的設定檔！`);
+                    // 重新抓取資料，畫面就會切換回正常的表單
+                    fetchSystemConfig();
+                    fetchJudges();
+                } else {
+                    alert("複製失敗：" + result.message);
+                }
+            } catch (err) {
+                console.error(err);
+                alert("執行複製時發生錯誤");
+            } finally {
+                setIsCopying(false);
+            }
+        };
 
         // ================= 4. 左半部處理邏輯 (Config) =================
         const handleConfigChange = (e) => {
@@ -1456,11 +1507,20 @@
         const saveSystemConfig = async () => {
             setIsConfigSaving(true);
             try {
-                const payload = { action: 'saveSystemConfig', API_Key: API_KEY, ...config };
+                const payload = { 
+                    action: 'saveSystemConfig', 
+                    API_Key: API_KEY, 
+                    year: selectedYear, // 確保存檔時帶著正確年度
+                    ...config 
+                };
                 const response = await fetch(API_URL, { method: 'POST', body: JSON.stringify(payload) });
                 const result = await response.json();
-                if (result.status === 'success') alert("系統設定已儲存！");
-                else alert("儲存設定失敗：" + result.message);
+                if (result.status === 'success') {
+                    alert("系統設定已儲存！");
+                    setHasConfig(true); // 存檔成功代表已有設定檔
+                } else {
+                    alert("儲存設定失敗：" + result.message);
+                }
             } catch (err) {
                 console.error(err);
                 alert("儲存設定時發生錯誤");
@@ -1473,21 +1533,16 @@
         const openJudgeModal = (mode, judge = null) => {
             setJudgeModalMode(mode);
             if (mode === 'edit' && judge) {
-                setEditingJudgeId(judge.Judge_Code || judge.id);
                 setJudgeFormData({
-                // 在 openJudgeModal 中確認這幾行是否能接到小寫值：
-                Competition_Year: judge.competition_year || judge.Competition_Year || config.current_year,
-                Judge_Code: judge.judge_code || judge.Judge_Code || '',
-                Judge_Name: judge.judge_name || judge.Judge_Name || '',
-                Password: judge.password || judge.Password || '',
-                    Categories: Array.isArray(judge.Categories || judge.categories) 
-                        ? (judge.Categories || judge.categories) 
-                        : []
+                    Competition_Year: judge.competition_year || selectedYear,
+                    Judge_Code: judge.judge_code || '',
+                    Judge_Name: judge.judge_name || '',
+                    Password: judge.password || '',
+                    Categories: Array.isArray(judge.categories) ? judge.categories : []
                 });
             } else {
-                setEditingJudgeId(null);
                 setJudgeFormData({
-                    Competition_Year: config.current_year,
+                    Competition_Year: selectedYear, // 帶入當前選定年度
                     Judge_Code: '',
                     Judge_Name: '',
                     Password: '',
@@ -1538,7 +1593,7 @@
             try {
                 const response = await fetch(API_URL, {
                     method: 'POST',
-                    body: JSON.stringify({ action: 'deleteJudge', API_Key: API_KEY, Judge_Code: judgeCode })
+                    body: JSON.stringify({ action: 'deleteJudge', API_Key: API_KEY, Judge_Code: judgeCode, year: selectedYear })
                 });
                 const result = await response.json();
                 if (result.status === 'success') fetchJudges();
@@ -1551,12 +1606,63 @@
             }
         };
 
+        // ================= UI 渲染 =================
+        
+        // 如果該年度尚未有設定檔，顯示「一鍵建立」畫面
+        if (!hasConfig && !isConfigLoading) {
+            return (
+                <div className="mt-12 flex justify-center">
+                    <div className="bg-white p-10 rounded-xl shadow-lg border border-gray-200 text-center max-w-md w-full">
+                        <span className="material-icons text-gray-300 text-6xl mb-4">folder_off</span>
+                        <h2 className="text-2xl font-bold text-gray-800 mb-2">尚未建立設定</h2>
+                        <p className="text-gray-600 mb-8">
+                            目前尚無 <span className="font-bold text-indigo-600 text-lg">{selectedYear}</span> 年度的系統設定與評審名單。
+                        </p>
+                        
+                        <button 
+                            onClick={handleCopyYearData}
+                            disabled={isCopying}
+                            className={`w-full flex items-center justify-center py-3 px-4 rounded-lg shadow-md text-white font-bold transition-all
+                                ${isCopying ? 'bg-indigo-300 cursor-not-allowed' : 'bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-600 hover:to-purple-700 hover:shadow-lg transform hover:-translate-y-0.5'}
+                            `}
+                        >
+                            {isCopying ? (
+                                <>
+                                    <span className="material-icons animate-spin mr-2">autorenew</span>
+                                    正在複製建立中...
+                                </>
+                            ) : (
+                                <>
+                                    <span className="material-icons mr-2">content_copy</span>
+                                    一鍵建立 (複製上一年度)
+                                </>
+                            )}
+                        </button>
+                        
+                        <div className="mt-6 flex items-center justify-center">
+                            <span className="text-xs text-gray-400 border-b border-gray-300 w-1/4"></span>
+                            <span className="text-xs text-gray-400 mx-2">或</span>
+                            <span className="text-xs text-gray-400 border-b border-gray-300 w-1/4"></span>
+                        </div>
+                        
+                        <button 
+                            onClick={() => setHasConfig(true)}
+                            className="mt-4 text-sm text-gray-500 hover:text-indigo-600 underline transition-colors"
+                        >
+                            手動從零開始設定
+                        </button>
+                    </div>
+                </div>
+            );
+        }
+
+        // 正常的左右兩欄設定畫面
         return (
             <div className="mt-6">
                 <div className="flex justify-between items-center mb-6">
                     <h2 className="text-xl font-bold text-gray-800 flex items-center gap-2">
                         <span className="material-icons text-primary">settings</span>
-                        系統設定與評審管理
+                        系統設定與評審管理 <span className="text-sm font-normal text-gray-500 ml-2">({selectedYear} 年度)</span>
                     </h2>
                 </div>
 
@@ -1573,10 +1679,10 @@
                             <div>
                                 <label className="block text-sm font-bold text-gray-700 mb-2">當前系統年度</label>
                                 <input 
-                                    type="number" name="current_year" value={config.current_year} onChange={handleConfigChange}
-                                    className="w-full md:w-1/2 border border-gray-300 rounded-md px-4 py-2 focus:ring-2 focus:ring-indigo-500 font-mono text-lg"
+                                    type="number" name="current_year" value={config.current_year} onChange={handleConfigChange} readOnly
+                                    className="w-full md:w-1/2 bg-gray-100 border border-gray-300 rounded-md px-4 py-2 text-gray-500 font-mono text-lg cursor-not-allowed"
                                 />
-                                <p className="text-xs text-gray-500 mt-1">此年度將作為新增隊伍與評審的預設值。</p>
+                                <p className="text-xs text-gray-500 mt-1">目前鎖定修改。若要切換年度，請使用上方導覽列的選單。</p>
                             </div>
                             <hr className="border-gray-100" />
                             <div className="space-y-4">
@@ -1620,7 +1726,6 @@
                                         ))
                                     ) : <span className="text-sm text-gray-400 italic">目前無設定任何組別</span>}
                                 </div>
-                                <p className="text-xs text-gray-500 mt-2">※ 這裡設定的組別，將連動至「新增隊伍」與「評審分配」的選單中。</p>
                             </div>
                         </div>
                         <div className="px-6 py-4 bg-gray-50 border-t border-gray-200 flex justify-end rounded-b-lg">
@@ -1646,7 +1751,6 @@
                                 <table className="min-w-full divide-y divide-gray-200">
                                     <thead className="bg-gray-50 sticky top-0 z-10">
                                         <tr>
-                                            <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">年度</th>
                                             <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">代碼</th>
                                             <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">姓名</th>
                                             <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">負責組別</th>
@@ -1654,40 +1758,23 @@
                                         </tr>
                                     </thead>
                                     <tbody className="bg-white divide-y divide-gray-200">
-                                        {isJudgesLoading ? (
-                                            <tr><td colSpan="5" className="px-4 py-8 text-center text-gray-500">載入中...</td></tr>
-                                        ) : judges.length === 0 ? (
-                                            <tr><td colSpan="5" className="px-4 py-8 text-center text-gray-500">目前無評審資料</td></tr>
-                                        ) : (
-                                            judges.map((judge, idx) => (
-                                                <tr key={judge.judge_code || idx} className="hover:bg-gray-50 border-b">
-                                                    {/* 精準對應後端的蛇形命名小寫屬性 */}
-                                                    <td className="px-4 py-3 text-sm text-gray-500">{judge.competition_year}</td>
-                                                    <td className="px-4 py-3 text-sm font-mono text-gray-900">{judge.judge_code}</td>
-                                                    <td className="px-4 py-3 text-sm font-bold text-gray-900">{judge.judge_name}</td>
-                                                    <td className="px-4 py-3 text-sm text-gray-600">
-                                                        <div className="flex flex-wrap gap-1">
-                                                            {(judge.categories || []).map(cat => (
-                                                                <span key={cat} className="text-[10px] bg-gray-100 border border-gray-200 px-1.5 py-0.5 rounded text-gray-600 whitespace-nowrap">
-                                                                    {cat}
-                                                                </span>
-                                                            ))}
-                                                        </div>
-                                                    </td>
-                                                    <td className="px-4 py-3 text-sm text-right whitespace-nowrap">
-                                                        <button onClick={() => openJudgeModal('edit', judge)} className="text-blue-600 hover:text-blue-800 mr-3" title="編輯">
-                                                            <span className="material-icons text-base">edit</span>
-                                                        </button>
-                                                        <button onClick={() => deleteJudge(judge.judge_code, judge.judge_name)} className="text-red-500 hover:text-red-700" title="刪除">
-                                                            <span className="material-icons text-base">delete</span>
-                                                        </button>
-                                                    </td>
-                                                </tr>
-                                            ))
-                                        )}
+                                        {isJudgesLoading ? <tr><td colSpan="4" className="px-4 py-8 text-center text-gray-500">載入中...</td></tr> : judges.length === 0 ? <tr><td colSpan="4" className="px-4 py-8 text-center text-gray-500">此年度目前無評審資料</td></tr> : judges.map((judge, idx) => (
+                                            <tr key={judge.judge_code || idx} className="hover:bg-gray-50 border-b">
+                                                <td className="px-4 py-3 text-sm font-mono text-gray-900">{judge.judge_code}</td>
+                                                <td className="px-4 py-3 text-sm font-bold text-gray-900">{judge.judge_name}</td>
+                                                <td className="px-4 py-3 text-sm text-gray-600">
+                                                    <div className="flex flex-wrap gap-1">
+                                                        {(judge.categories || []).map(cat => <span key={cat} className="text-[10px] bg-gray-100 border border-gray-200 px-1.5 py-0.5 rounded text-gray-600 whitespace-nowrap">{cat}</span>)}
+                                                    </div>
+                                                </td>
+                                                <td className="px-4 py-3 text-sm text-right whitespace-nowrap">
+                                                    <button onClick={() => openJudgeModal('edit', judge)} className="text-blue-600 hover:text-blue-800 mr-3"><span className="material-icons text-base">edit</span></button>
+                                                    <button onClick={() => deleteJudge(judge.judge_code, judge.judge_name)} className="text-red-500 hover:text-red-700"><span className="material-icons text-base">delete</span></button>
+                                                </td>
+                                            </tr>
+                                        ))}
                                     </tbody>
                                 </table>
-
                             </div>
                         </div>
                     </div>
@@ -1712,7 +1799,7 @@
                                         <div className="grid grid-cols-2 gap-4">
                                             <div>
                                                 <label className="block text-sm font-bold text-gray-700 mb-1">年度</label>
-                                                <input type="number" name="Competition_Year" value={judgeFormData.Competition_Year} onChange={handleJudgeFormChange} className="w-full border border-gray-300 rounded px-3 py-2 focus:ring-2 focus:ring-green-500 bg-white" />
+                                                <input type="number" name="Competition_Year" value={judgeFormData.Competition_Year} readOnly className="w-full bg-gray-100 border border-gray-300 rounded px-3 py-2 text-gray-500 cursor-not-allowed" />
                                             </div>
                                             <div>
                                                 <label className="block text-sm font-bold text-gray-700 mb-1">評審代碼</label>
@@ -1730,14 +1817,14 @@
                                             </div>
                                         </div>
                                         <div className="bg-white p-4 rounded border border-gray-200">
-                                            <label className="block text-sm font-bold text-gray-700 mb-3 border-b pb-2">負責評分組別 (動態讀取左側設定)</label>
+                                            <label className="block text-sm font-bold text-gray-700 mb-3 border-b pb-2">負責評分組別</label>
                                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-48 overflow-y-auto">
                                                 {config.categories && config.categories.length > 0 ? config.categories.map(cat => (
                                                     <label key={cat} className="flex items-center space-x-2 cursor-pointer p-2 hover:bg-green-50 rounded border border-transparent hover:border-green-100 transition">
                                                         <input type="checkbox" checked={judgeFormData.Categories.includes(cat)} onChange={() => handleJudgeCategoryToggle(cat)} className="form-checkbox text-green-600 h-4 w-4 rounded border-gray-300 focus:ring-green-500" />
                                                         <span className="text-sm text-gray-700">{cat}</span>
                                                     </label>
-                                                )) : <span className="text-sm text-red-500 italic">請先至左側「全域參數設定」新增組別。</span>}
+                                                )) : <span className="text-sm text-red-500 italic">請先至左側新增組別。</span>}
                                             </div>
                                         </div>
                                     </div>
@@ -1758,10 +1845,16 @@
         );
     };
     
-// --- 管理員後台框架 (AdminDashboard) --- 2026 0228 update 增加系統管理分頁
+// --- 管理員後台框架 (AdminDashboard) --- 20280228 1812 update
     const AdminDashboard = ({ user, onLogout }) => {
         // 控制目前顯示的分頁: 'teams' 或 'settings'
         const [currentTab, setCurrentTab] = useState('teams');
+        
+        // 全域年度切換狀態，預設抓今年的民國年 (例如 115)
+        const [selectedYear, setSelectedYear] = useState((new Date().getFullYear() - 1911).toString());
+        
+        // 產生下拉選單的年度選項 (前後幾年)
+        const yearOptions = ['112', '113', '114', '115', '116', '117'];
 
         return (
             <div className="min-h-screen bg-gray-100 pb-10">
@@ -1771,7 +1864,22 @@
                         <div className="flex justify-between h-16">
                             <div className="flex items-center">
                                 <span className="material-icons text-white mr-2">admin_panel_settings</span>
-                                <span className="font-bold text-xl text-white">管理員後台</span>
+                                <span className="font-bold text-xl text-white mr-6">管理員後台</span>
+                                
+                                {/* 全域年度切換器 */}
+                                <div className="flex items-center bg-white/20 px-3 py-1.5 rounded text-white">
+                                    <span className="material-icons text-sm mr-1">calendar_today</span>
+                                    <span className="text-sm font-medium mr-2">管理年度:</span>
+                                    <select 
+                                        value={selectedYear}
+                                        onChange={(e) => setSelectedYear(e.target.value)}
+                                        className="bg-white text-gray-800 text-sm font-bold rounded px-2 py-0.5 border-none focus:ring-2 focus:ring-secondary cursor-pointer"
+                                    >
+                                        {yearOptions.map(y => (
+                                            <option key={y} value={y}>{y} 年度</option>
+                                        ))}
+                                    </select>
+                                </div>
                             </div>
                             <div className="flex items-center space-x-4">
                                 <span className="text-gray-200 text-sm hidden sm:block">Hello, Admin</span>
@@ -1837,15 +1945,14 @@
                         </div>
                     </div>
 
-                    {/* Conditional Rendering */}
+                    {/* Conditional Rendering：把 selectedYear 當作 Prop 傳給子元件 */}
                     <div className="transition-opacity duration-300">
                         {currentTab === 'teams' ? (
-                            <TeamManager />
+                            <TeamManager selectedYear={selectedYear} />
                         ) : (
-                            <SystemSettings />
+                            <SystemSettings selectedYear={selectedYear} />
                         )}
                     </div>
-
                 </main>
             </div>
         );
