@@ -1355,9 +1355,395 @@
         );
     };
 
-// --- 管理員後台框架 (AdminDashboard) ---Jan 24 18:34 update
+// --- 系統設定與評審管理元件 (SystemSettings) --- 2026/2/28 新增功能
+    const SystemSettings = () => {
+        // ================= 1. 左半部：全域參數設定狀態 =================
+        const [config, setConfig] = useState({
+            current_year: new Date().getFullYear() - 1911,
+            is_registration_open: false,
+            is_judging_open: false,
+            categories: ["宜蘭在地國中組", "宜蘭在地國小組", "環境永續國中組", "環境永續國小組", "校訂課程國中組", "校訂課程國小組"]
+        });
+        const [newCategory, setNewCategory] = useState('');
+        const [isConfigLoading, setIsConfigLoading] = useState(false);
+        const [isConfigSaving, setIsConfigSaving] = useState(false);
+
+        // ================= 2. 右半部：評審名單狀態 =================
+        const [judges, setJudges] = useState([]);
+        const [isJudgesLoading, setIsJudgesLoading] = useState(false);
+        const [isJudgeSaving, setIsJudgeSaving] = useState(false);
+
+        // 評審 Modal 狀態
+        const [isJudgeModalOpen, setIsJudgeModalOpen] = useState(false);
+        const [judgeModalMode, setJudgeModalMode] = useState('add');
+        const [judgeFormData, setJudgeFormData] = useState({
+            Competition_Year: '',
+            Judge_Code: '',
+            Judge_Name: '',
+            Password: '',
+            Categories: []
+        });
+        const [editingJudgeId, setEditingJudgeId] = useState(null);
+
+        // ================= 3. 資料載入 (API) =================
+        const fetchSystemConfig = async () => {
+            setIsConfigLoading(true);
+            try {
+                const response = await fetch(API_URL, {
+                    method: 'POST',
+                    body: JSON.stringify({ action: 'getSystemConfig', API_Key: API_KEY })
+                });
+                const result = await response.json();
+                if (result.status === 'success' && result.data) {
+                    setConfig(result.data);
+                }
+            } catch (err) {
+                console.warn("無法取得系統設定", err);
+            } finally {
+                setIsConfigLoading(false);
+            }
+        };
+
+        const fetchJudges = async () => {
+            setIsJudgesLoading(true);
+            try {
+                const response = await fetch(API_URL, {
+                    method: 'POST',
+                    body: JSON.stringify({ action: 'getAllJudges', API_Key: API_KEY })
+                });
+                const result = await response.json();
+                if (result.status === 'success') {
+                    const sorted = result.data.sort((a, b) => {
+                        const yearA = a.Competition_Year || a.year || 0;
+                        const yearB = b.Competition_Year || b.year || 0;
+                        return yearB - yearA;
+                    });
+                    setJudges(sorted);
+                }
+            } catch (err) {
+                console.error("無法取得評審列表", err);
+            } finally {
+                setIsJudgesLoading(false);
+            }
+        };
+
+        useEffect(() => {
+            fetchSystemConfig();
+            fetchJudges();
+        }, []);
+
+        // ================= 4. 左半部處理邏輯 (Config) =================
+        const handleConfigChange = (e) => {
+            const { name, value, type, checked } = e.target;
+            setConfig(prev => ({
+                ...prev,
+                [name]: type === 'checkbox' ? checked : value
+            }));
+        };
+
+        const handleAddCategory = () => {
+            const cat = newCategory.trim();
+            if (cat && !config.categories.includes(cat)) {
+                setConfig(prev => ({ ...prev, categories: [...prev.categories, cat] }));
+                setNewCategory('');
+            }
+        };
+
+        const handleRemoveCategory = (catToRemove) => {
+            setConfig(prev => ({ ...prev, categories: prev.categories.filter(c => c !== catToRemove) }));
+        };
+
+        const saveSystemConfig = async () => {
+            setIsConfigSaving(true);
+            try {
+                const payload = { action: 'saveSystemConfig', API_Key: API_KEY, ...config };
+                const response = await fetch(API_URL, { method: 'POST', body: JSON.stringify(payload) });
+                const result = await response.json();
+                if (result.status === 'success') alert("系統設定已儲存！");
+                else alert("儲存設定失敗：" + result.message);
+            } catch (err) {
+                console.error(err);
+                alert("儲存設定時發生錯誤");
+            } finally {
+                setIsConfigSaving(false);
+            }
+        };
+
+        // ================= 5. 右半部處理邏輯 (Judge) =================
+        const openJudgeModal = (mode, judge = null) => {
+            setJudgeModalMode(mode);
+            if (mode === 'edit' && judge) {
+                setEditingJudgeId(judge.Judge_Code || judge.id);
+                setJudgeFormData({
+                    Competition_Year: judge.Competition_Year || judge.year || config.current_year,
+                    Judge_Code: judge.Judge_Code || judge.id || '',
+                    Judge_Name: judge.Judge_Name || judge.name || '',
+                    Password: judge.Password || judge.password || '',
+                    Categories: Array.isArray(judge.Categories || judge.categories) 
+                        ? (judge.Categories || judge.categories) 
+                        : []
+                });
+            } else {
+                setEditingJudgeId(null);
+                setJudgeFormData({
+                    Competition_Year: config.current_year,
+                    Judge_Code: '',
+                    Judge_Name: '',
+                    Password: '',
+                    Categories: []
+                });
+            }
+            setIsJudgeModalOpen(true);
+        };
+
+        const handleJudgeFormChange = (e) => {
+            const { name, value } = e.target;
+            setJudgeFormData(prev => ({ ...prev, [name]: value }));
+        };
+
+        const handleJudgeCategoryToggle = (category) => {
+            setJudgeFormData(prev => {
+                const cats = prev.Categories || [];
+                if (cats.includes(category)) return { ...prev, Categories: cats.filter(c => c !== category) };
+                else return { ...prev, Categories: [...cats, category] };
+            });
+        };
+
+        const saveJudge = async () => {
+            if (!judgeFormData.Judge_Code || !judgeFormData.Judge_Name) {
+                alert("代碼與姓名為必填欄位！");
+                return;
+            }
+            setIsJudgeSaving(true);
+            try {
+                const payload = { action: 'saveJudge', API_Key: API_KEY, ...judgeFormData };
+                const response = await fetch(API_URL, { method: 'POST', body: JSON.stringify(payload) });
+                const result = await response.json();
+                if (result.status === 'success') {
+                    setIsJudgeModalOpen(false);
+                    fetchJudges();
+                } else alert("儲存評審失敗：" + result.message);
+            } catch (err) {
+                console.error(err);
+                alert("儲存評審發生錯誤");
+            } finally {
+                setIsJudgeSaving(false);
+            }
+        };
+
+        const deleteJudge = async (judgeCode, judgeName) => {
+            if (!confirm(`確定要刪除評審「${judgeName}」嗎？`)) return;
+            setIsJudgesLoading(true);
+            try {
+                const response = await fetch(API_URL, {
+                    method: 'POST',
+                    body: JSON.stringify({ action: 'deleteJudge', API_Key: API_KEY, Judge_Code: judgeCode })
+                });
+                const result = await response.json();
+                if (result.status === 'success') fetchJudges();
+                else alert("刪除失敗：" + result.message);
+            } catch (err) {
+                console.error(err);
+                alert("刪除發生錯誤");
+            } finally {
+                setIsJudgesLoading(false);
+            }
+        };
+
+        return (
+            <div className="mt-6">
+                <div className="flex justify-between items-center mb-6">
+                    <h2 className="text-xl font-bold text-gray-800 flex items-center gap-2">
+                        <span className="material-icons text-primary">settings</span>
+                        系統設定與評審管理
+                    </h2>
+                </div>
+
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                    {/* 左半部：全域參數設定 */}
+                    <div className="bg-white rounded-lg shadow-md border border-gray-200 flex flex-col">
+                        <div className="bg-gray-50 px-6 py-4 border-b border-gray-200">
+                            <h3 className="text-lg font-bold text-gray-800 flex items-center">
+                                <span className="material-icons text-indigo-500 mr-2">tune</span>
+                                全域參數設定
+                            </h3>
+                        </div>
+                        <div className="p-6 flex-1 space-y-6">
+                            <div>
+                                <label className="block text-sm font-bold text-gray-700 mb-2">當前系統年度</label>
+                                <input 
+                                    type="number" name="current_year" value={config.current_year} onChange={handleConfigChange}
+                                    className="w-full md:w-1/2 border border-gray-300 rounded-md px-4 py-2 focus:ring-2 focus:ring-indigo-500 font-mono text-lg"
+                                />
+                                <p className="text-xs text-gray-500 mt-1">此年度將作為新增隊伍與評審的預設值。</p>
+                            </div>
+                            <hr className="border-gray-100" />
+                            <div className="space-y-4">
+                                <label className="block text-sm font-bold text-gray-700">系統狀態開關</label>
+                                <label className="flex items-center cursor-pointer">
+                                    <div className="relative">
+                                        <input type="checkbox" name="is_registration_open" checked={config.is_registration_open} onChange={handleConfigChange} className="sr-only" />
+                                        <div className={`block w-10 h-6 rounded-full transition-colors ${config.is_registration_open ? 'bg-indigo-500' : 'bg-gray-300'}`}></div>
+                                        <div className={`dot absolute left-1 top-1 bg-white w-4 h-4 rounded-full transition-transform ${config.is_registration_open ? 'transform translate-x-4' : ''}`}></div>
+                                    </div>
+                                    <div className="ml-3 text-sm font-medium text-gray-700">開放隊伍報名與資料修改</div>
+                                </label>
+                                <label className="flex items-center cursor-pointer">
+                                    <div className="relative">
+                                        <input type="checkbox" name="is_judging_open" checked={config.is_judging_open} onChange={handleConfigChange} className="sr-only" />
+                                        <div className={`block w-10 h-6 rounded-full transition-colors ${config.is_judging_open ? 'bg-orange-500' : 'bg-gray-300'}`}></div>
+                                        <div className={`dot absolute left-1 top-1 bg-white w-4 h-4 rounded-full transition-transform ${config.is_judging_open ? 'transform translate-x-4' : ''}`}></div>
+                                    </div>
+                                    <div className="ml-3 text-sm font-medium text-gray-700">開放評審登入與評分</div>
+                                </label>
+                            </div>
+                            <hr className="border-gray-100" />
+                            <div>
+                                <label className="block text-sm font-bold text-gray-700 mb-2">參賽組別管理</label>
+                                <div className="flex gap-2 mb-3">
+                                    <input 
+                                        type="text" value={newCategory} onChange={(e) => setNewCategory(e.target.value)} onKeyPress={(e) => e.key === 'Enter' && handleAddCategory()}
+                                        placeholder="輸入新組別名稱..." className="flex-1 border border-gray-300 rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500"
+                                    />
+                                    <button onClick={handleAddCategory} className="bg-gray-800 text-white px-4 py-2 rounded-md text-sm hover:bg-gray-700 transition">新增</button>
+                                </div>
+                                <div className="flex flex-wrap gap-2 p-3 bg-gray-50 border border-gray-200 rounded-md min-h-[80px]">
+                                    {config.categories && config.categories.length > 0 ? (
+                                        config.categories.map((cat, idx) => (
+                                            <span key={idx} className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-indigo-100 text-indigo-800 border border-indigo-200">
+                                                {cat}
+                                                <button onClick={() => handleRemoveCategory(cat)} className="ml-2 flex-shrink-0 text-indigo-500 hover:text-indigo-900 focus:outline-none">
+                                                    <span className="material-icons text-[14px]">cancel</span>
+                                                </button>
+                                            </span>
+                                        ))
+                                    ) : <span className="text-sm text-gray-400 italic">目前無設定任何組別</span>}
+                                </div>
+                                <p className="text-xs text-gray-500 mt-2">※ 這裡設定的組別，將連動至「新增隊伍」與「評審分配」的選單中。</p>
+                            </div>
+                        </div>
+                        <div className="px-6 py-4 bg-gray-50 border-t border-gray-200 flex justify-end rounded-b-lg">
+                            <button onClick={saveSystemConfig} disabled={isConfigSaving} className={`px-6 py-2 rounded shadow-sm text-sm font-bold text-white transition-all ${isConfigSaving ? 'bg-gray-400' : 'bg-indigo-600 hover:bg-indigo-700'}`}>
+                                {isConfigSaving ? '儲存中...' : '儲存系統設定'}
+                            </button>
+                        </div>
+                    </div>
+
+                    {/* 右半部：評審名單管理 */}
+                    <div className="bg-white rounded-lg shadow-md border border-gray-200 flex flex-col">
+                        <div className="bg-gray-50 px-6 py-4 border-b border-gray-200 flex justify-between items-center">
+                            <h3 className="text-lg font-bold text-gray-800 flex items-center">
+                                <span className="material-icons text-green-600 mr-2">how_to_reg</span>
+                                評審名單管理
+                            </h3>
+                            <button onClick={() => openJudgeModal('add')} className="bg-green-600 hover:bg-green-700 text-white px-3 py-1.5 rounded text-sm font-medium flex items-center shadow-sm transition">
+                                <span className="material-icons text-sm mr-1">person_add</span> 新增
+                            </button>
+                        </div>
+                        <div className="p-0 flex-1 overflow-hidden flex flex-col">
+                            <div className="overflow-x-auto overflow-y-auto max-h-[600px] flex-1 p-2">
+                                <table className="min-w-full divide-y divide-gray-200">
+                                    <thead className="bg-gray-50 sticky top-0 z-10">
+                                        <tr>
+                                            <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">年度</th>
+                                            <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">代碼</th>
+                                            <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">姓名</th>
+                                            <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">負責組別</th>
+                                            <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">操作</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="bg-white divide-y divide-gray-200">
+                                        {isJudgesLoading ? <tr><td colSpan="5" className="px-4 py-8 text-center text-gray-500">載入中...</td></tr> : judges.length === 0 ? <tr><td colSpan="5" className="px-4 py-8 text-center text-gray-500">目前無評審資料</td></tr> : judges.map((judge, idx) => (
+                                            <tr key={judge.Judge_Code || judge.id || idx} className="hover:bg-gray-50">
+                                                <td className="px-4 py-3 text-sm text-gray-500">{judge.Competition_Year || judge.year}</td>
+                                                <td className="px-4 py-3 text-sm font-mono text-gray-900">{judge.Judge_Code || judge.id}</td>
+                                                <td className="px-4 py-3 text-sm font-bold text-gray-900">{judge.Judge_Name || judge.name}</td>
+                                                <td className="px-4 py-3 text-sm text-gray-600">
+                                                    <div className="flex flex-wrap gap-1">
+                                                        {(judge.Categories || judge.categories || []).map(cat => <span key={cat} className="text-[10px] bg-gray-100 border border-gray-200 px-1.5 py-0.5 rounded text-gray-600 whitespace-nowrap">{cat}</span>)}
+                                                    </div>
+                                                </td>
+                                                <td className="px-4 py-3 text-sm text-right whitespace-nowrap">
+                                                    <button onClick={() => openJudgeModal('edit', judge)} className="text-blue-600 hover:text-blue-800 mr-2"><span className="material-icons text-base">edit</span></button>
+                                                    <button onClick={() => deleteJudge(judge.Judge_Code || judge.id, judge.Judge_Name || judge.name)} className="text-red-500 hover:text-red-700"><span className="material-icons text-base">delete</span></button>
+                                                </td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                {/* 評審新增/編輯 Modal */}
+                {isJudgeModalOpen && (
+                    <div className="fixed inset-0 z-50 overflow-y-auto">
+                        <div className="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:block sm:p-0">
+                            <div className="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity" onClick={() => setIsJudgeModalOpen(false)}></div>
+                            <span className="hidden sm:inline-block sm:align-middle sm:h-screen">&#8203;</span>
+                            <div className="inline-block align-bottom bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-xl w-full">
+                                <div className="bg-green-700 px-6 py-4 flex justify-between items-center">
+                                    <h3 className="text-xl font-bold text-white flex items-center">
+                                        <span className="material-icons mr-2">{judgeModalMode === 'add' ? 'person_add' : 'manage_accounts'}</span>
+                                        {judgeModalMode === 'add' ? '新增評審帳號' : '編輯評審資料'}
+                                    </h3>
+                                    <button onClick={() => setIsJudgeModalOpen(false)} className="text-green-200 hover:text-white transition-colors"><span className="material-icons">close</span></button>
+                                </div>
+                                <div className="px-6 py-6 bg-gray-50">
+                                    <div className="space-y-5">
+                                        <div className="grid grid-cols-2 gap-4">
+                                            <div>
+                                                <label className="block text-sm font-bold text-gray-700 mb-1">年度</label>
+                                                <input type="number" name="Competition_Year" value={judgeFormData.Competition_Year} onChange={handleJudgeFormChange} className="w-full border border-gray-300 rounded px-3 py-2 focus:ring-2 focus:ring-green-500 bg-white" />
+                                            </div>
+                                            <div>
+                                                <label className="block text-sm font-bold text-gray-700 mb-1">評審代碼</label>
+                                                <input type="text" name="Judge_Code" value={judgeFormData.Judge_Code} onChange={handleJudgeFormChange} disabled={judgeModalMode === 'edit'} placeholder="例如: J01" className={`w-full border rounded px-3 py-2 focus:ring-2 focus:ring-green-500 ${judgeModalMode === 'edit' ? 'bg-gray-200 text-gray-500' : 'bg-white border-gray-300'}`} />
+                                            </div>
+                                        </div>
+                                        <div className="grid grid-cols-2 gap-4">
+                                            <div>
+                                                <label className="block text-sm font-bold text-gray-700 mb-1">評審姓名</label>
+                                                <input type="text" name="Judge_Name" value={judgeFormData.Judge_Name} onChange={handleJudgeFormChange} className="w-full border border-gray-300 rounded px-3 py-2 focus:ring-2 focus:ring-green-500" />
+                                            </div>
+                                            <div>
+                                                <label className="block text-sm font-bold text-gray-700 mb-1">登入密碼</label>
+                                                <input type="text" name="Password" value={judgeFormData.Password} onChange={handleJudgeFormChange} className="w-full border border-gray-300 rounded px-3 py-2 focus:ring-2 focus:ring-green-500" />
+                                            </div>
+                                        </div>
+                                        <div className="bg-white p-4 rounded border border-gray-200">
+                                            <label className="block text-sm font-bold text-gray-700 mb-3 border-b pb-2">負責評分組別 (動態讀取左側設定)</label>
+                                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-48 overflow-y-auto">
+                                                {config.categories && config.categories.length > 0 ? config.categories.map(cat => (
+                                                    <label key={cat} className="flex items-center space-x-2 cursor-pointer p-2 hover:bg-green-50 rounded border border-transparent hover:border-green-100 transition">
+                                                        <input type="checkbox" checked={judgeFormData.Categories.includes(cat)} onChange={() => handleJudgeCategoryToggle(cat)} className="form-checkbox text-green-600 h-4 w-4 rounded border-gray-300 focus:ring-green-500" />
+                                                        <span className="text-sm text-gray-700">{cat}</span>
+                                                    </label>
+                                                )) : <span className="text-sm text-red-500 italic">請先至左側「全域參數設定」新增組別。</span>}
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div className="bg-gray-100 px-6 py-4 flex flex-row-reverse gap-3 border-t border-gray-200">
+                                    <button onClick={saveJudge} disabled={isJudgeSaving} className={`px-6 py-2 rounded shadow-sm text-sm font-bold text-white transition-all ${isJudgeSaving ? 'bg-gray-400' : 'bg-green-600 hover:bg-green-700'}`}>
+                                        {isJudgeSaving ? '儲存中...' : '儲存評審'}
+                                    </button>
+                                    <button onClick={() => setIsJudgeModalOpen(false)} className="px-5 py-2 bg-white border border-gray-300 rounded shadow-sm text-sm font-medium text-gray-700 hover:bg-gray-50">
+                                        取消
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                )}
+            </div>
+        );
+    };
+    
+// --- 管理員後台框架 (AdminDashboard) --- 2026 0228 update 增加系統管理分頁
     const AdminDashboard = ({ user, onLogout }) => {
-        // 控制目前顯示的分頁: 'teams' 或 'judges'
+        // 控制目前顯示的分頁: 'teams' 或 'settings'
         const [currentTab, setCurrentTab] = useState('teams');
 
         return (
@@ -1395,8 +1781,8 @@
                                 onChange={(e) => setCurrentTab(e.target.value)}
                                 className="block w-full rounded-md border-gray-300 focus:border-secondary focus:ring-secondary"
                             >
-                                <option value="teams">隊伍管理 (Teams)</option>
-                                <option value="judges">評審設定 (Judges)</option>
+                                <option value="teams">隊伍資源管理 (Teams)</option>
+                                <option value="settings">系統設定與評審 (Settings)</option>
                             </select>
                         </div>
                         <div className="hidden sm:block">
@@ -1409,7 +1795,7 @@
                                                 ? 'border-secondary text-secondary'
                                                 : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
                                             }
-                                            whitespace-nowrap py-4 px-1 border-b-2 font-medium text-lg flex items-center
+                                            whitespace-nowrap py-4 px-1 border-b-2 font-medium text-lg flex items-center transition-colors
                                         `}
                                     >
                                         <span className="material-icons mr-2 text-base">groups</span>
@@ -1417,17 +1803,17 @@
                                     </button>
 
                                     <button
-                                        onClick={() => setCurrentTab('judges')}
+                                        onClick={() => setCurrentTab('settings')}
                                         className={`
-                                            ${currentTab === 'judges'
+                                            ${currentTab === 'settings'
                                                 ? 'border-secondary text-secondary'
                                                 : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
                                             }
-                                            whitespace-nowrap py-4 px-1 border-b-2 font-medium text-lg flex items-center
+                                            whitespace-nowrap py-4 px-1 border-b-2 font-medium text-lg flex items-center transition-colors
                                         `}
                                     >
-                                        <span className="material-icons mr-2 text-base">manage_accounts</span>
-                                        評審帳號設定
+                                        <span className="material-icons mr-2 text-base">settings</span>
+                                        系統設定與評審
                                     </button>
                                 </nav>
                             </div>
@@ -1439,7 +1825,7 @@
                         {currentTab === 'teams' ? (
                             <TeamManager />
                         ) : (
-                            <JudgeManager />
+                            <SystemSettings />
                         )}
                     </div>
 
