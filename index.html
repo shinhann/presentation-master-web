@@ -1394,6 +1394,8 @@
                     body: JSON.stringify({ action: 'getSystemConfig', API_Key: API_KEY, year: selectedYear })
                 });
                 const result = await response.json();
+
+                console.log("看這裡！API 傳回來的系統設定：", result.data); //偵錯使用
                 
                 if (result.status === 'success' && result.data && Object.keys(result.data).length > 0) {
                     const data = result.data;
@@ -1504,6 +1506,7 @@
 
         const handleAddCategory = () => {
             const cat = newCategory.trim();
+            console.log("看這裡！準備新增前的 categories 狀態：", config.categories); //偵錯使用
             if (cat && !flatCategories.includes(cat)) {
                 setConfig(prev => {
                     const newCats = { ...(prev.categories || {}) };
