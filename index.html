@@ -1349,7 +1349,7 @@
         );
     };
 
-// --- 系統設定與評審管理元件 (SystemSettings) ---20260228 2229
+// --- 系統設定與評審管理元件 (SystemSettings) ---
     // 接收來自 AdminDashboard 傳下來的 selectedYear
     const SystemSettings = ({ selectedYear }) => {
         const [hasConfig, setHasConfig] = useState(true);
@@ -1398,8 +1398,7 @@
                 if (result.status === 'success' && result.data && Object.keys(result.data).length > 0) {
                     const data = result.data;
                     
-                    // 1. 處理組別資料 (相容 categories 與 Category_Group_Map)
-                    let rawCats = data.categories || data.Category_Group_Map || data.category_group_map;
+                    let rawCats = data.Category_Group_Map || data.category_group_map || data.categories;
                     let parsedCats = {};
                     
                     if (rawCats) {
@@ -1410,11 +1409,10 @@
                         }
                     }
 
-                    // 2. 處理其他設定值 (相容前端 state 與後端 DB 欄位命名)
                     setConfig({
-                        current_year: data.current_year || data.Competition_Year || selectedYear,
-                        is_registration_open: data.is_registration_open ?? (data.Is_Active === true || data.Is_Active === 'TRUE'),
-                        is_judging_open: data.is_judging_open ?? (data.System_Lock === false || data.System_Lock === 'FALSE'), // 假設 Lock 為 false 代表開放評分
+                        current_year: data.Competition_Year || data.current_year || selectedYear,
+                        is_registration_open: data.Is_Active === true || data.Is_Active === 'TRUE' || data.is_registration_open === true,
+                        is_judging_open: data.System_Lock === false || data.System_Lock === 'FALSE' || data.is_judging_open === true,
                         categories: parsedCats
                     });
                     setHasConfig(true);
@@ -1530,20 +1528,15 @@
         const saveSystemConfig = async () => {
             setIsConfigSaving(true);
             try {
-                // 準備雙重相容的 Payload，確保後端不管用哪個 Key 都接得到
                 const catString = JSON.stringify(config.categories || {});
                 const payload = { 
                     action: 'saveSystemConfig', 
                     API_Key: API_KEY, 
                     year: selectedYear, 
-                    
-                    // 前端慣用 Key
                     current_year: config.current_year,
                     is_registration_open: config.is_registration_open,
                     is_judging_open: config.is_judging_open,
                     categories: catString,
-                    
-                    // 後端資料庫對應 Key (保險起見一併傳送)
                     Competition_Year: config.current_year,
                     Is_Active: config.is_registration_open,
                     System_Lock: !config.is_judging_open,
@@ -1880,7 +1873,7 @@
                 )}
             </div>
         );
-    };;
+    };
     
 // --- 管理員後台框架 (AdminDashboard) --- 20280228 1812 update
     const AdminDashboard = ({ user, onLogout }) => {
