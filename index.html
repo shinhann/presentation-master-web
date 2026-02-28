@@ -1349,7 +1349,7 @@
         );
     };
 
-// --- 系統設定與評審管理元件 (SystemSettings) ---202602281830
+// --- 系統設定與評審管理元件 (SystemSettings) ---
     // 接收來自 AdminDashboard 傳下來的 selectedYear
     const SystemSettings = ({ selectedYear }) => {
         const [hasConfig, setHasConfig] = useState(true);
@@ -1360,7 +1360,7 @@
             current_year: selectedYear,
             is_registration_open: false,
             is_judging_open: false,
-            categories: {} // 改為物件結構以對應後端
+            categories: {} // 確保預設為物件
         });
         const [newCategory, setNewCategory] = useState('');
         const [isConfigLoading, setIsConfigLoading] = useState(false);
@@ -1383,7 +1383,6 @@
         });
 
         // ================= 動態計算攤平的組別陣列 =================
-        // 將 { "宜蘭在地": ["組A", "組B"], "未分類": ["組C"] } 轉為 ["組A", "組B", "組C"]
         const flatCategories = Object.values(config.categories || {}).flat().filter(Boolean);
 
         // ================= 3. 資料載入 (API) =================
@@ -1397,13 +1396,25 @@
                 const result = await response.json();
                 
                 if (result.status === 'success' && result.data && Object.keys(result.data).length > 0) {
-                    // 解析 categories：如果後端傳來字串，先 parse 成物件；如果是陣列，包裝成「未分類」
+                    // ★ PM 修正指令：確保 categories 解析為穩定物件
                     let parsedCats = {};
                     if (result.data.categories) {
-                        if (typeof result.data.categories === 'string') {
-                            try { parsedCats = JSON.parse(result.data.categories); } catch (e) { console.warn("Categories parse error"); }
-                        } else if (typeof result.data.categories === 'object') {
-                            parsedCats = Array.isArray(result.data.categories) ? { "未分類": result.data.categories } : result.data.categories;
+                        let rawData = result.data.categories;
+                        // 如果是字串，先 parse
+                        if (typeof rawData === 'string') {
+                            try { 
+                                rawData = JSON.parse(rawData); 
+                            } catch (e) { 
+                                console.warn("Categories parse error"); 
+                                rawData = {}; 
+                            }
+                        }
+                        
+                        // 強制轉型：如果是陣列（例如 []），就轉成物件
+                        if (Array.isArray(rawData)) {
+                            parsedCats = rawData.length > 0 ? { "未分類": rawData } : {};
+                        } else if (typeof rawData === 'object' && rawData !== null) {
+                            parsedCats = rawData;
                         }
                     }
                     setConfig({ ...result.data, categories: parsedCats });
@@ -1503,7 +1514,6 @@
             const cat = newCategory.trim();
             if (cat && !flatCategories.includes(cat)) {
                 setConfig(prev => {
-                    // 將新組別歸類到 "未分類"
                     const newCats = { ...(prev.categories || {}) };
                     if (!newCats["未分類"]) newCats["未分類"] = [];
                     newCats["未分類"] = [...newCats["未分類"], cat];
@@ -1516,7 +1526,6 @@
         const handleRemoveCategory = (catToRemove) => {
             setConfig(prev => {
                 const newCats = { ...prev.categories };
-                // 遍歷所有屬性，把該標籤過濾掉
                 Object.keys(newCats).forEach(key => {
                     newCats[key] = newCats[key].filter(c => c !== catToRemove);
                 });
@@ -1532,7 +1541,6 @@
                     API_Key: API_KEY, 
                     year: selectedYear, 
                     ...config,
-                    // 強制轉為 JSON 字串送回後端
                     categories: JSON.stringify(config.categories || {}) 
                 };
                 const response = await fetch(API_URL, { method: 'POST', body: JSON.stringify(payload) });
