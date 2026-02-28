@@ -1595,20 +1595,32 @@
             });
         };
 
-        const saveJudge = async () => {
+const saveJudge = async () => {
             if (!judgeFormData.Judge_Code || !judgeFormData.Judge_Name) {
                 alert("代碼與姓名為必填欄位！");
                 return;
             }
             setIsJudgeSaving(true);
             try {
-                const payload = { action: 'saveJudge', API_Key: API_KEY, ...judgeFormData };
+                // ⚠️ 這裡修改：精準對齊資料庫的 Judge_Setup Schema
+                const payload = { 
+                    action: 'saveJudge', 
+                    API_Key: API_KEY, 
+                    Competition_Year: judgeFormData.Competition_Year,
+                    Judge_Code: judgeFormData.Judge_Code,
+                    Judge_Name: judgeFormData.Judge_Name,
+                    Login_Password: judgeFormData.Password, // 前端 Password 對應 DB Login_Password
+                    Category_Short: judgeFormData.Categories.join(',') // 將陣列 ["A組", "B組"] 轉成字串 "A組,B組"
+                };
+                
                 const response = await fetch(API_URL, { method: 'POST', body: JSON.stringify(payload) });
                 const result = await response.json();
                 if (result.status === 'success') {
                     setIsJudgeModalOpen(false);
                     fetchJudges();
-                } else alert("儲存評審失敗：" + result.message);
+                } else {
+                    alert("儲存評審失敗：" + result.message);
+                }
             } catch (err) {
                 console.error(err);
                 alert("儲存評審發生錯誤");
