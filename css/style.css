@@ -1,0 +1,111 @@
+/* 簡報達人評分系統 115學年度 - 核心設計系統 */
+:root {
+  --primary: #3E2723;       /* 暖深棕色 (Warm Dark Brown) */
+  --primary-hover: #2C1B18;
+  --secondary: #D84315;     /* 赤陶紅 (Terracotta Accent) */
+  --secondary-hover: #BF360C;
+  --bg-light: #F8F6F0;      /* 柔和米亮灰 (Soft Warm Light Gray) */
+  --card-bg: #FFFFFF;
+  --text-dark: #212121;
+  --text-muted: #666666;
+  --border-color: #E0DCD3;
+  
+  /* 狀態燈號顏色 */
+  --status-submitted: #2E7D32;  /* 🟢 完稿 */
+  --status-draft: #F57F17;      /* 🟡 暫存 */
+  --status-unrated: #757575;    /* ⚪ 未評 */
+  --status-error: #C62828;      /* 🔴 錯誤 */
+  
+  /* 獎項視覺顏色 */
+  --award-top: #FFD700;         /* 🥇 特優 (Gold) */
+  --award-excellent: #C0C0C0;   /* 🥈 優等 (Silver) */
+  --award-star: #FF9800;        /* ✨ 簡報之星/學習之星 (Bronze/Orange) */
+}
+
+/* 全域基礎重置 */
+body {
+  font-family: 'Noto Sans TC', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  background-color: var(--bg-light);
+  color: var(--text-dark);
+  margin: 0;
+  padding: 0;
+  min-height: 100vh;
+}
+
+/* 玻璃擬物風格卡片 (Glassmorphism & Card style) */
+.card-warm {
+  background: var(--card-bg);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  box-shadow: 0 4px 12px rgba(62, 39, 35, 0.05);
+  transition: all 0.2s ease-in-out;
+}
+
+.card-warm:hover {
+  box-shadow: 0 6px 16px rgba(62, 39, 35, 0.08);
+}
+
+/* 狀態標籤與 Badges */
+.badge-submitted {
+  background-color: #E8F5E9;
+  color: var(--status-submitted);
+  border: 1px solid #A5D6A7;
+}
+
+.badge-draft {
+  background-color: #FFFDE7;
+  color: var(--status-draft);
+  border: 1px solid #FFF59D;
+}
+
+.badge-unrated {
+  background-color: #FAFAFA;
+  color: var(--status-unrated);
+  border: 1px solid #E0E0E0;
+}
+
+.badge-error {
+  background-color: #FFEBEE;
+  color: var(--status-error);
+  border: 1px solid #EF9A9A;
+}
+
+/* YouTube Smart Sticky 播放器容器 */
+.video-container {
+  position: relative;
+  padding-bottom: 56.25%; /* 16:9 比例 */
+  height: 0;
+  overflow: hidden;
+  border-radius: 8px;
+  background: #000;
+}
+
+.video-container iframe {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  border: 0;
+}
+
+/* 評分滑桿與儀表板加強自訂 */
+input[type=range] {
+  accent-color: var(--secondary);
+}
+
+/* 自訂捲軸 */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: #F1F1F1;
+}
+::-webkit-scrollbar-thumb {
+  background: #D7CCC8;
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #A1887F;
+}
