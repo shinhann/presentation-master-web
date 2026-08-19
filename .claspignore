@@ -1,4 +1,9 @@
 **/*
-!API.js
 !Database.js
+!Router.js
+!Service_Auth.js
+!Service_Teams.js
+!Service_Judges.js
+!Service_Scores.js
+!Service_Config.js
 !appsscript.json
