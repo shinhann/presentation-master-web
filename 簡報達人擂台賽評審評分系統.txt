@@ -1,0 +1,2364 @@
+﻿開發筆記
+
+
+
+
+2026年2月28日
+改成先解決 系統設定頁面
+
+
+開發到系統設定頁面完成，但還沒完成年度和組別設定和DataBase對齊
+
+
+下次要處理編輯評審有問題的狀況，還要再加入EMIAL範本設定、評分標準、年度的比賽簡章網址上傳的設定
+
+
+今天先這樣吧，做了四個小時，很厲害了，下次再繼續，開發還滿好玩的，只是很花時間。
+  
+
+
+
+2026年1月24日
+開發到隊伍管理，下一步要調整新增隊伍的部分
+
+
+
+
+
+
+
+
+
+
+
+
+V79
+給 AI 開發者的系統提示詞 (System Prompt for AI Developer)
+角色設定： 你是一位精通 Google Apps Script (GAS)、Google Sheets 資料庫架構以及現代化前端 (React, Tailwind CSS, SheetJS, PWA) 開發的全端工程師。
+任務目標： 請依據下方的 「軟體需求規格說明書 v75.0」，開發一套「簡報達人擂台賽評審評分系統」。
+核心開發原則 (Critical Instructions)：
+1. 架構模式： 嚴格遵守「前後端分離」。前端為 React Single Page Application (SPA)，部署於 GitHub Pages；後端為 GAS Web App (API)。兩者透過 JSON 進行非同步通訊。
+2. 資安模型 (Proxy Pattern)： Google 試算表必須保持 「私有 (Private)」 權限。前端絕不直接存取試算表，所有讀寫請求一律透過 GAS 後端的 doGet/doPost 代理執行，並驗證 API_Key 與 Referer。
+3. 前端核心技術 (React & SheetJS)：
+   * React + Vite: 建構高效能的單頁應用。
+   * SheetJS (xlsx): 這是關鍵技術。所有「匯入」功能（如匯入隊伍名單），必須在前端使用 SheetJS 解析 Excel/CSV 檔案，轉換為標準 JSON 格式後，再發送給後端 API 寫入。嚴禁將原始 Excel 檔傳給後端處理。
+4. PWA 優先 (PWA First)： 前端必須配置 vite-plugin-pwa，支援「加入主畫面」，提供全螢幕體驗。
+5. 資料一致性：
+   * UUID： 隊伍 ID (Team_ID) 必須由系統自動生成 (UUIDv4)。
+   * 年度隔離： 所有查詢與寫入必須帶有 Competition_Year 參數。
+6. Google 表單整合策略：
+   * 系統不直接對接 Google 表單 API，而是採用 「CSV 中轉模式」。
+   * 管理員從 Google 表單後台下載 CSV，再透過本系統後台的 SheetJS 匯入功能進行資料載入。
+簡報達人擂台賽評審評分系統
+軟體需求規格說明書 (Software Requirements Specification)
+版本： v75.0 (Login & Judge Detail Restored Edition) 專案代號： PresentationMaster-Online 依據文件： 114學年度宜蘭瘋學習活動計畫 適用情境： 居家線上評審 (Remote Grading) 評審架構： 9 位實名評審 (代號 A~I)，後台表格設定，前台代號輸出。 視覺風格： 暖色系 - 專業沉穩版 (Warm Professional)
+1. 系統架構與技術堆疊 (Architecture)
+* 前端展示層 (Client Side):
+   * 平台: GitHub Pages (靜態網頁託管)。
+   * 核心框架: React 18+ (Hooks), Vite (Build Tool)。
+   * PWA 技術: vite-plugin-pwa (Installable, Offline Fallback)。
+   * 樣式庫: Tailwind CSS + Headless UI / Material UI。
+   * 關鍵套件:
+      * SheetJS (xlsx): [核心] 用於前端直接解析 Excel (.xlsx) 與 CSV 檔案，將參賽隊伍資料轉為 JSON 物件，減輕伺服器運算負擔並提升安全性。
+      * Quill.js / React-Quill: 富文字編輯器 (用於郵件範本)。
+      * Axios / Fetch: API 通訊。
+   * 職責: 介面渲染、YouTube 嵌入、狀態管理、熱更新、API 通訊、離線快取、檔案解析 (SheetJS)。
+   * 前端專案結構範例 (Frontend Project Structure):
+
+my-project/
+├── index.html              <-- 【唯一】的 HTML 檔案 (舞台)
+├── package.json
+├── src/
+│   ├── main.jsx            <-- 程式入口
+│   ├── App.jsx             <-- 路由設定 (導演，使用 React Router)
+│   └── pages/              <-- 各個頁面的邏輯 (佈景)
+│       ├── Login.jsx       <-- 登入頁面
+│       ├── Judge.jsx       <-- 評審評分介面
+│       └── Admin.jsx       <-- 後台管理介面
+* 
+後端邏輯層 (Server Side):
+   * 平台: Google Apps Script (部署為 Web App)。
+   * 執行權限: 執行身分「我 (Me)」，存取權限「任何人 (Anyone)」。
+   * 職責: 安全性過濾、商業邏輯、併發鎖定、接收純 JSON 資料進行寫入 (不處理檔案解析)、郵件發送、UUID 生成、Google Doc 擷取。
+   * 資料儲存層 (Database):
+   * 平台: Google 試算表 (Google Sheets)。
+   * 隱私模型: 私有 (Private)。
+   * 職責: 結構化資料儲存、歷史紀錄備份。
+2. UI/UX 設計規範 (Design Guidelines)
+   * 色彩系統: 主色暖深棕色 (#3E2723)，CTA 赤陶紅 (#D84315)。
+   * 狀態識別: 🟢 完稿 / 🟡 暫存 / ⚪ 未評 / 🔴 錯誤 (雙重編碼)。
+   * 獎項視覺: 🥇 特優 / 🥈 優等 / ✨ 特色獎。
+   * 版面佈局: Desktop 左右分欄；Mobile 單欄 + 智慧 Sticky。
+3. 資料庫結構規劃 (Google 試算表)
+資料來源標記： 🔵[系統自動] / 🟠[管理員輸入] / 🟢[系統計算] / 🟣[評審輸入]
+(1) System_Config (系統設定)
+   * API_Key: 🟠 通訊金鑰。
+   * Admin_Password: 🟠 管理員密碼。
+   * Last_Snapshot_Time: 🔵 最後快照時間。
+(2) Judge_Setup (評審名單設定)
+   * Competition_Year: 🟠 比賽年度。
+   * Judge_Code: 🔵 評審代號 (A~I 固定)。
+   * Judge_Name: 🟠 評審真實姓名。
+   * Login_Password: 🟠 登入密碼。
+   * Category_Short: 🟠 負責類別簡稱。
+(3) Year_Config (年度設定)
+   * Competition_Year: 🟠 比賽年度。
+   * Is_Active: 🟠 是否為當前年度。
+   * Rubric_Link, Rules_Link: 🟠 外連網址。
+   * System_Lock: 🟠 系統鎖定。
+   * Category_Group_Map (JSON): 🔵 類別組別對照表 (含6組預設值)。
+   * Email_Template_Subject, Email_Template_Body: 🔵 郵件範本。
+(4) Teams (隊伍資料)
+   * Team_ID: 🔵 隊伍編號 (UUID)。
+   * Competition_Year, Category, Group_Name: 🟠 基本分類。
+   * School, Work_Title, Description: 🟠 作品資訊。
+   * Student1_Name~Student3_Email: 🟠 學生資料。
+   * Teacher1_Name~Teacher2_Email: 🟠 教師資料。
+   * Contact_Person, Contact_Phone: 🟠 聯絡資料。
+   * MindMap_Link, Slides_Link, Video_Link, Consent_Link, Drive_Link: 🟠 連結資料。
+   * Link_Note, Memo: 🟠 備註資料。
+(5) Scores (評分數據)
+   * 索引: Competition_Year, Category, Group_Name, Team_ID, Judge_Code.
+   * 評分: Score_Content... 等 4 項。
+   * 總分: Total_Score.
+   * 質性: Comment (評語), Award_Recommendation (推薦).
+   * 系統: Session_ID, Last_Updated.
+(6) Final_Results (總成績表)
+   * Average_Score, Rank.
+   * Rank_Award (優選), Feature_Award (特色).
+   * Rec_Judge_A/B/C: 🔵 彙整自 Scores 表。
+(7) [Hidden] Backup_Timestamp
+   * 🔵 快照備份。
+4. 前端介面詳細規格 (Interface Specifications)
+說明： 以下 [DB: Table.Column] 代表該 UI 元件對應的資料庫欄位。
+A. 登入頁面 (Login Page)
+   * 初始狀態檢查 (Initial Setup Check):
+   1. 系統載入時，先檢查 [DB: Year_Config.Competition_Year] 是否有值。
+   2. 若為空值 (初始狀態): 彈出提示框「系統尚未初始化，請先以管理員身分登入設定年度」，且組別選擇強制鎖定為 [管理員後台]。
+   * Header: 標題「[DB: Year_Config.Competition_Year] 學年度 簡報達人擂台賽 評審系統」。
+   * Form (分組選單 Grouping):
+   1. 組別選擇 (Select):
+   * 選項結構: 使用 <optgroup> 分組。
+   * 固定選項: [管理員後台] (System Admin)。
+   * 動態選項: 讀取 [DB: Year_Config.Category_Group_Map] 列出各評審類別。
+   2. 身分選擇 (Select):
+   * 若選擇 [管理員後台]: 此欄位隱藏，或顯示固定文字「系統管理員」。
+   * 若選擇 [評審類別]: 連動顯示該類別下的評審真實姓名 (資料來源: [DB: Judge_Setup])。
+   3. 密碼輸入 (Input):
+   * 若為管理員: 驗證 [DB: System_Config.Admin_Password]。
+   * 若為評審: 驗證 [DB: Judge_Setup.Login_Password]。
+   * Action: 登入按鈕 (呼叫 API，依據選擇的身分導向不同頁面 Judge.jsx 或 Admin.jsx)。
+B. 評審評分介面 (Judge Interface)
+1. 頂部應用程式列 (App Bar)
+   * 標題: 「Hello, [DB: Judge_Setup.Judge_Name] 老師 (評審 [DB: Judge_Setup.Judge_Code] )」。
+   * 副標題: 當前類別名稱 [DB: Judge_Setup.Category_Short]。
+   * 右側功能圖示:
+   * print (列印個人評分表)
+   * refresh (重新整理資料 / Hot-Reload): 不登出情況下更新影片連結。
+   * menu_book (規準: 開啟 [DB: Year_Config.Rubric_Link])
+   * description (簡章: 開啟 [DB: Year_Config.Rules_Link])
+   * help_outline (教學)
+   * exit_to_app (登出)
+2. 組別切換區 (Group Switcher)
+   * 位置: App Bar 下方。
+   * 功能: 切換 「國小組 / 國中組」 (顯示全銜)，並附帶完成進度提示 (如：5/10)。
+   * 選項來源: [DB: Year_Config.Category_Group_Map] 中對應類別的 Value 陣列。
+3. 左側隊伍導航 (Sidebar)
+   * 功能: 快速導覽與狀態檢視。
+   * 顯示欄位:
+   * 學校名稱: [DB: Teams.School]
+   * 作品名稱: [DB: Teams.Work_Title]
+   * 即時總分: [DB: Scores.Total_Score] (顯示該評審給出的當前總分，若未評則顯示 - )。
+   * 即時排序: (前端計算) 依該評審在當前組別的給分進行即時排名 (例如: 暫居第 1)。
+   * 狀態圖示: 雙重編碼 (顏色+Icon)。
+4. 右側主要工作區 (Main Content)
+   * 卡片一：作品播放與資訊區 (Video & Info)
+   * 基本資料 (Basic Info) [明確顯示]:
+   1. 作品名稱: [DB: Teams.Work_Title] (標題, H2)。
+   2. 學校: [DB: Teams.School] (副標, H3)。
+   3. 作品說明: [DB: Teams.Description] (完整文字顯示，支援摺疊/展開)。
+   * YouTube: 嵌入 [DB: Teams.Video_Link] (Smart Sticky)。若無法嵌入，則顯示「在新視窗開啟影片」按鈕。
+   * 按鈕列 (External Links):
+   1. 🧠 Mindomo 心智圖: 開啟 [DB: Teams.MindMap_Link]。
+   2. 📊 簡報檔案: 開啟 [DB: Teams.Slides_Link]。
+   3. 📄 著作權同意書: 開啟 [DB: Teams.Consent_Link]。
+   4. ☁️ 備用雲端: 開啟 [DB: Teams.Drive_Link] (若非空)。
+   5. 連結備註 (Link Note): [DB: Teams.Link_Note]。
+   * 邏輯: 若此欄位非空，對應的按鈕旁顯示⚠️警告圖示，點擊或懸停時顯示備註內容。
+   * 卡片二：評分滑桿區 (Scoring) [依據計畫權重]:
+   * 簡報內容 (40%): 滑桿 (0-5等級) + 微調按鈕 + 輸入框。對應資料庫：[DB: Scores.Score_Content]。
+   * 表達能力 (30%): 滑桿 (0-5等級) + 微調按鈕 + 輸入框。對應資料庫：[DB: Scores.Score_Expression]。
+   * 臺風表現 (20%): 滑桿 (0-5等級) + 微調按鈕 + 輸入框。對應資料庫：[DB: Scores.Score_Stage]。
+   * 製作技巧 (10%): 滑桿 (0-5等級) + 微調按鈕 + 輸入框。對應資料庫：[DB: Scores.Score_Technique]。
+   * 總分儀表板: 系統自動執行加權計算並即時顯示總分。對應資料庫：[DB: Scores.Total_Score]。
+   * 卡片三：質性評量 (Feedback)
+   * 特色推薦 (Select): 下拉選單 [請選擇, 探究之星, 創意之星, 學習之星] (單選)。對應資料庫：[DB: Scores.Award_Recommendation]。
+   * 評語 (Textarea): 必填 + 匿名提示。對應資料庫：[DB: Scores.Comment]。
+   * 底部存檔區
+   * 存檔按鈕: 觸發 submitScore API，將上述資料寫入 [DB: Scores]。
+   * 下載 CSV: 下載本機紀錄備份。
+   * 列印功能:
+   * 列印標的: 列印當前切換之組別（例如：宜蘭在地國小組）的評分表。
+   * 列印格式 (Print Format): 表格呈現。
+   * 頁首 (Header): 標題：「{{組別全銜}} 評分表」。
+   * 表格欄位:
+   1. 作品名稱
+   2. 作品說明
+   3. 內容 (40%)
+   4. 表達能力 (30%)
+   5. 臺風表現 (20%)
+   6. 製作技巧 (10%)
+   7. 分數加總
+   8. 序位
+   9. 評語
+   * 頁尾 (Footer): 評審委員簽名：____________________
+C. 後台管理介面 (Admin Dashboard)
+頁籤 1: 系統設定
+   * API 設定、年度參數 (含連結)、類別組別對照編輯 (JSON GUI)、評審名單檢視。
+頁籤 2: 隊伍管理 (Teams)
+   * 功能按鈕:
+   * 📸 建立系統快照
+   * 📥 下載 CSV 匯入範本 (含所有正確標題)
+   * 📂 匯入隊伍 (SheetJS) (CSV -> JSON -> API)
+   * 新增/編輯隊伍 (Manual Edit Table) [詳細欄位定義]:
+   * UI 形式: 彈出視窗 (Modal) 或 獨立表單頁。
+   * 詳細輸入表格 (Input Fields):
+   * 區塊 (Section)
+	欄位顯示名稱 (Label)
+	對應資料庫欄位 (DB Column)
+	輸入類型
+	必填
+	備註
+	基本資料
+	比賽年度
+	[DB: Teams.Competition_Year]
+	Number
+	V
+	預設帶入
+	
+
+	參賽類別
+	[DB: Teams.Category]
+	Select
+	V
+	連動組別
+	
+
+	參賽組別
+	[DB: Teams.Group_Name]
+	Select
+	V
+	
+
+	
+
+	學校名稱
+	[DB: Teams.School]
+	Text
+	V
+	
+
+	
+
+	作品名稱
+	[DB: Teams.Work_Title]
+	Text
+	V
+	
+
+	
+
+	作品說明
+	[DB: Teams.Description]
+	Textarea
+	V
+	
+
+	參賽學生
+	學生 1 姓名
+	[DB: Teams.Student1_Name]
+	Text
+	V
+	
+
+	
+
+	學生 1 Email
+	[DB: Teams.Student1_Email]
+	Email
+	V
+	
+
+	
+
+	(UI)
+	(按 + 顯示學生 2)
+	Button
+	
+
+	
+
+	
+
+	學生 2 姓名
+	[DB: Teams.Student2_Name]
+	Text
+	
+
+	選填
+	
+
+	學生 2 Email
+	[DB: Teams.Student2_Email]
+	Email
+	
+
+	選填
+	
+
+	(UI)
+	(按 + 顯示學生 3)
+	Button
+	
+
+	
+
+	
+
+	學生 3 姓名
+	[DB: Teams.Student3_Name]
+	Text
+	
+
+	選填
+	
+
+	學生 3 Email
+	[DB: Teams.Student3_Email]
+	Email
+	
+
+	選填
+	指導教師
+	指導教師 1 姓名
+	[DB: Teams.Teacher1_Name]
+	Text
+	V
+	
+
+	
+
+	指導教師 1 Email
+	[DB: Teams.Teacher1_Email]
+	Email
+	V
+	
+
+	
+
+	(UI)
+	(按 + 顯示教師 2)
+	Button
+	
+
+	
+
+	
+
+	指導教師 2 姓名
+	[DB: Teams.Teacher2_Name]
+	Text
+	
+
+	選填
+	
+
+	指導教師 2 Email
+	[DB: Teams.Teacher2_Email]
+	Email
+	
+
+	選填
+	聯絡資訊
+	聯絡人姓名
+	[DB: Teams.Contact_Person]
+	Text
+	V
+	
+
+	
+
+	聯絡電話
+	[DB: Teams.Contact_Phone]
+	Tel
+	V
+	
+
+	作品連結
+	心智圖網址
+	[DB: Teams.MindMap_Link]
+	URL
+	V
+	
+
+	
+
+	簡報網址
+	[DB: Teams.Slides_Link]
+	URL
+	V
+	
+
+	
+
+	影片網址
+	[DB: Teams.Video_Link]
+	URL
+	V
+	YouTube
+	
+
+	同意書連結
+	[DB: Teams.Consent_Link]
+	URL
+	V
+	
+
+	
+
+	備用雲端
+	[DB: Teams.Drive_Link]
+	URL
+	
+
+	選填
+	管理註記
+	備註
+	[DB: Teams.Memo]
+	Textarea
+	
+
+	僅管理員可見
+	
+
+	失效連結備註
+	[DB: Teams.Link_Note]
+	Text
+	
+
+	前台顯示警告
+	   * 
+列表: 顯示所有資料，支援直接編輯 Link_Note。
+頁籤 3: 評分進度
+      * 堆疊長條圖 (綠/黃/灰)，顯示評審真名進度。
+頁籤 4: 成績結算
+      * 列表: 顯示隊伍、各評審總分、Rec_Judge_A/B/C (顯示評審建議)、評語。
+      * 決策: 雙軌獎項決策 (特色獎無上限、優選獎 1/3 額度監控)。
+      * 匯入離線 CSV。
+頁籤 5: 輸出與寄信
+      * 列印 (匿名化)。
+      * 寄信 (Rich Text Editor + 變數插入 + 測試信)。
+頁籤 6: 歷年成績 (Archives)
+      * 跨年度搜尋、獎項視覺勳章。
+5. 後端 API 功能規格 (Backend Specifications)
+A. 安全性
+      * Referer Check, API Key, LockService.
+B. 核心 API
+      * login: 驗證身分，回傳組別資料。
+      * submitScore: 寫入分數。
+      * importTeamsData: 接收 JSON 資料 (由前端 SheetJS 解析完成)，執行批次寫入 Teams。
+      * calculateResults:
+      * 計算排名與 1/3 額度。
+      * 彙整評審推薦: 將 Scores 中的 Award_Recommendation 填入 Final_Results 的 Rec_Judge_X。
+      * getArchivedResults, saveEmailTemplate, restoreSnapshot.
+6. 非功能性需求 (Non-Functional Requirements)
+      * PWA Support: vite-plugin-pwa 支援。
+      * Resilience: Debounce, LocalStorage.
+      * Compatibility: SheetJS 需支援 .csv, .xls, .xlsx 格式。
+7. 交付項目 (Deliverables)
+      1. Frontend: React Source Code (Vite + SheetJS + PWA).
+      2. Backend: Code.gs.
+      3. DB: Google Sheet Template.
+      4. Docs: 部署手冊、使用者手冊 (含 Google 表單匯入教學)。
+
+
+V49 PWA
+給 AI 開發者的系統提示詞 (System Prompt for AI Developer)
+角色設定：
+你是一位精通 Google Apps Script (GAS)、Google Sheets 資料庫架構以及現代化前端 (React, Tailwind CSS, SheetJS, PWA) 開發的全端工程師。
+任務目標：
+請依據下方的 「軟體需求規格說明書 v49.0」，開發一套「簡報達人擂台賽評審評分系統」。
+核心開發原則 (Critical Instructions)：
+      1. 架構模式： 嚴格遵守「前後端分離」。前端為 React Single Page Application (SPA)，部署於 GitHub Pages；後端為 GAS Web App (API)。兩者透過 JSON 進行非同步通訊。
+      2. 資安模型 (Proxy Pattern)： Google 試算表必須保持 「私有 (Private)」 權限。前端絕不直接存取試算表，所有讀寫請求一律透過 GAS 後端的 doGet/doPost 代理執行，並驗證 API_Key 與 Referer。
+      3. PWA 優先 (PWA First)： 前端必須配置 vite-plugin-pwa，支援「加入主畫面 (Add to Home Screen)」，提供全螢幕 Standalone 體驗，並透過 Service Worker 實作靜態資源快取。
+      4. 資料一致性：
+      * UUID： 隊伍 ID (Team_ID) 必須由系統自動生成 (UUIDv4)，不可依賴人工編號。
+      * 評審代號： 資料庫底層僅儲存 A~I 代號，前端顯示時再映射為真實姓名。
+      * 年度隔離： 所有查詢與寫入必須帶有 Competition_Year 參數，確保歷史資料不被汙染。
+      5. UX/UI 優先級：
+      * React Components： 使用 React 元件模組化開發。
+      * RWD Mobile First： 評審介面必須針對 iPad 與手機優化，特別是「影片播放區」的防誤觸 Sticky 設計。
+      * 雙重編碼： 狀態顯示必須同時包含「顏色」與「圖示 (Material Icons)」。
+      * 漸進式存檔： 評語欄位雖為必填，但「暫存 (Draft)」時允許為空，不可阻擋評審存檔，僅在狀態燈號上做區隔。
+      6. 容錯與災難復原：
+      * 前端必須實作 Debounce (防抖) 機制。
+      * 前端必須實作 LocalStorage 離線暫存。
+      * 資料匯入： 前端使用 SheetJS (xlsx) 解析 Excel/CSV。
+      * 後端必須實作 LockService。
+      * 後台必須具備「CSV 匯入」與「快照還原」功能。
+簡報達人擂台賽評審評分系統
+軟體需求規格說明書 (Software Requirements Specification)
+版本： v49.0 (PWA Integrated Final Edition)
+專案代號： PresentationMaster-Online
+依據文件： 114學年度宜蘭瘋學習活動計畫
+適用情境： 居家線上評審 (Remote Grading)
+評審架構： 9 位實名評審 (代號 A~I)，後台表格設定，前台代號輸出。
+視覺風格： 暖色系 - 專業沉穩版 (Warm Professional)
+1. 系統架構與技術堆疊 (Architecture)
+      * 前端展示層 (Client Side):
+      * 平台: GitHub Pages (靜態網頁託管)。
+      * 核心框架: React 18+ (Hooks), Vite。
+      * PWA 技術:
+      * vite-plugin-pwa: 自動生成 Service Worker 與 Manifest。
+      * Capabilities: 支援離線載入介面 (Offline Fallback)、桌面安裝 (Installable)。
+      * 樣式庫: Tailwind CSS + Headless UI / Material UI。
+      * 關鍵套件:
+      * SheetJS (xlsx): 前端解析 Excel/CSV，減輕後端負擔。
+      * Quill.js / React-Quill: 富文字編輯器。
+      * Axios / Fetch: API 通訊。
+      * 職責: 介面渲染、YouTube 嵌入 (Smart Sticky)、狀態管理、熱更新、API 通訊、鍵盤偵測、離線介面快取。
+      * 後端邏輯層 (Server Side):
+      * 平台: Google Apps Script (部署為 Web App)。
+      * 執行權限: 執行身分「我 (Me)」，存取權限「任何人 (Anyone)」。
+      * 職責: 安全性過濾、商業邏輯 (加權計算/額度試算)、併發鎖定、接收 JSON 批次寫入、郵件發送、UUID 生成、Google Doc 內容擷取。
+      * 資料儲存層 (Database):
+      * 平台: Google 試算表 (Google Sheets)。
+      * 隱私模型: 私有 (Private)。僅系統擁有者與 Service Account 可存取。
+      * 職責: 結構化資料儲存、歷史紀錄備份 (Snapshot)。
+2. UI/UX 設計規範 (Design Guidelines)
+      * 色彩系統 (Color Palette) - 溫暖且高對比:
+      * 主色 (Primary): 暖深棕色 (Warm Dark Brown, #3E2723) - 頂部導航。
+      * 行動呼籲色 (CTA): 赤陶紅 (Terra Cotta, #D84315) - 登入、存檔。
+      * 輔助色 (Secondary): 深琥珀色 (Dark Amber, #F57F17) - 圖示、選取。
+      * 背景色: 暖乳白 (#FFF8E1) / 純白 (#FFFFFF)。
+      * 狀態識別 (Status Identification) - [雙重編碼]:
+      * 🟢 完稿: 顏色 #2e7d32 + 圖示 check_circle。 (定義：分數>0 且 評語非空)
+      * 🟡 暫存: 顏色 #fbc02d + 圖示 edit。 (定義：分數未滿 或 評語為空)
+      * ⚪ 未評: 顏色 Gray + 圖示 radio_button_unchecked。
+      * 🔴 錯誤: 顏色 #c62828 + 圖示 error。
+      * 獎項視覺識別 (Visual Badges):
+      * 🥇 特優獎: 金色底 (#FFD700) + 深金字。
+      * 🥈 優等獎: 銀灰底 (#E0E0E0) + 深灰字。
+      * ✨ 特色獎 (探究/創意/學習): 淺藍底 (#E3F2FD) + 深藍字。
+      * 版面佈局原則:
+      * 桌面版: 左右分欄 (Split Pane)。
+      * 行動版: 單欄流式佈局 + 防誤觸智慧 Sticky Mini Bar。
+3. 資料庫結構規劃 (Google 試算表) - [完整定義]
+資料來源標記： 🔵[系統自動] / 🟠[管理員輸入] / 🟢[系統計算] / 🟣[評審輸入]
+(1) System_Config (系統設定)
+      * API_Key: 🟠 [Input: 直接在 Sheet 填寫]。
+      * Admin_Password: 🟠 [Input: 直接在 Sheet 填寫]。
+      * Last_Snapshot_Time: 🔵。
+(2) Judge_Setup (評審名單設定)
+      * [Input: 管理員直接在 Sheet 填寫]
+      * Judge_Code: 🔵 (A~I 固定)。
+      * Judge_Name: 🟠。
+      * Login_Password: 🟠。
+      * Category_Short: 🟠 (下拉選單，對應 Year_Config 的類別簡稱)。
+(3) Year_Config (年度設定)
+      * Competition_Year: 🟠 [Input: 後台系統設定介面]。
+      * Is_Active: 🟠 [Input: 後台系統設定介面]。
+      * Rubric_Link: 🟠 [Input: 後台系統設定介面]。
+      * Rules_Link: 🟠 [Input: 後台系統設定介面]。
+      * System_Lock: 🟠 [Input: 後台系統設定介面]。
+      * Category_Group_Map (JSON): 🔵 (依後台設定轉存)。
+      * Email_Template_Subject: 🔵 (依後台編輯器轉存)。
+      * Email_Template_Body: 🔵 (依後台編輯器轉存，儲存為 HTML String)。
+(4) Teams (隊伍資料)
+      * [Input: 後台匯入 CSV (經 SheetJS 解析) 或 手動新增介面]
+      * Team_ID: 🔵 (UUID)。
+      * Competition_Year: 🟠。
+      * Category: 🟠 (簡稱)。
+      * Group_Name: 🟠 (全銜)。
+      * School: 🟠。
+      * Work_Title: 🟠。
+      * Description: 🟠。
+      * 學生資料 (細項):
+      * Student1_Name, Student1_Email: 🟠。
+      * Student2_Name, Student2_Email: 🟠。
+      * Student3_Name, Student3_Email: 🟠。
+      * 教師資料 (細項):
+      * Teacher1_Name, Teacher1_Email: 🟠。
+      * Teacher2_Name, Teacher2_Email: 🟠。
+      * 聯絡資料:
+      * Contact_Person: 🟠。
+      * Contact_Phone: 🟠。
+      * 連結資料:
+      * MindMap_Link: 🟠。
+      * Slides_Link: 🟠。
+      * Video_Link: 🟠。
+      * Consent_Link: 🟠。
+      * Drive_Link: 🟠 (備用雲端，選填)。
+      * 管理標記:
+      * Link_Note: 🟠 (後台列表直接編輯)。
+(5) Scores (評分數據)
+      * Competition_Year ~ Team_ID: 🔵。
+      * Judge_Code: 🔵 (A~I)。
+      * Score_Content (40%): 🟣 [Input: 評審介面滑桿]。
+      * Score_Expression (30%): 🟣 [Input: 評審介面滑桿]。
+      * Score_Stage (20%): 🟣 [Input: 評審介面滑桿]。
+      * Score_Technique (10%): 🟣 [Input: 評審介面滑桿]。
+      * Total_Score: 🟢。
+      * Comment: 🟣 [Input: 評審介面評語框]。
+      * Award_Recommendation: 🟣 [Input: 評審介面下拉選單]。
+      * Session_ID: 🔵。
+      * Last_Updated: 🔵。
+(6) Final_Results (總成績表)
+      * Competition_Year ~ School: 🔵。
+      * Average_Score: 🟢。
+      * Rank: 🟢 (同分並列)。
+      * Rank_Award: 🟠 [Input: 後台成績結算下拉]。
+      * Feature_Award: 🟠 [Input: 後台成績結算下拉]。
+(7) [Hidden] Backup_Timestamp
+      * 🔵 快照備份分頁。
+4. 前端介面詳細規格 (Interface Specifications)
+A. 登入頁面 (Login Page)
+      * Header: 「114學年度 簡報達人擂台賽 評審系統」。
+      * Form:
+      1. 組別選擇: <optgroup> 分組顯示 6 大組別 + 管理員。
+      2. 身分選擇: 連動顯示真實姓名 (如：王小明 老師)。
+      * 邏輯: 選擇組別 -> 查詢 Category_Group_Map 找到 Category -> 查詢 Judge_Setup 找到該 Category 的評審 -> 顯示選單。
+      3. 密碼: 數字鍵盤優化。
+      * Action: 登入按鈕。
+B. 評審評分介面 (Judge Interface)
+      * App Bar: 「Hello, 王小明 老師 (評審 A)」 + 右側 Hot-Reload 按鈕。
+      * Sidebar: 單層列表 (僅顯示當前組別)，雙重編碼狀態燈號。
+      * Main Content:
+      * 卡片一 (播放區):
+      * YouTube 嵌入 (Smart Sticky: 輸入時收合，點展開按鈕 Scroll Top)。
+      * 外部連結按鈕 (含備用雲端 Drive_Link)。
+      * [UX] 連結失效提示: Tooltip 顯示 Link_Note 內容。
+      * 卡片二 (評分區):
+      * 滑桿 (0-5) + 微調按鈕 + 輸入框。
+      * 即時加權總分。
+      * 卡片三 (質性區):
+      * 特色表現獎推薦: 下拉選單 (單選，建議性質)。
+      * 評語: 必填標示，輸入時顯示「匿名保護」提示。
+      * Bottom: 存檔 FAB + 下載 CSV。
+C. 後台管理介面 (Admin Dashboard)
+      * 導航: Scrollable Tabs。
+頁籤 1: 系統設定
+      * API 連線。
+      * 年度參數 (含規準/簡章連結)。
+      * 類別與組別參數編輯器 (Web UI): 編輯 JSON 設定並回寫 Year_Config。
+      * 快照還原介面。
+頁籤 2: 隊伍管理
+      * 建立快照。
+      * 匯入隊伍:
+      * 技術: 使用 SheetJS 在前端解析 CSV/Excel。
+      * 邏輯: 解析 -> 預覽 -> 轉 JSON 傳給 API -> 後端生成 UUID。
+      * 欄位: 必須對應資料庫 Teams 表的所有輸入欄位。
+      * 新增/編輯隊伍 (手動介面):
+      * 介面欄位: 必須包含 基本資訊 + 3位學生 + 2位老師 + 聯絡人 + 5種連結 (含 Drive_Link)。
+      * 操作: 新增或更新資料庫。
+頁籤 3: 評分進度
+      * 堆疊長條圖 (綠/黃/灰)，顯示評審真名進度。
+頁籤 4: 成績結算
+      * 篩選: 依六組篩選。
+      * 列表: 顯示隊伍、評審分數、評審建議 (特色獎)、評審評語 (匿名)。
+      * 決策:
+      * 特色表現獎: 下拉選單。
+      * 特色優選獎: 下拉選單 (額度監控: 總數 1/3 無條件進位)。
+      * 工具: 重新計算、鎖定、匯入離線 CSV。
+頁籤 5: 輸出與寄信 (Output) [Rich Text & Import]
+      * 配額顯示: 今日剩餘 Email 額度。
+      * 列印: A4 評語表 (全銜標題、匿名評語)。
+      * 寄信設定:
+      * 編輯模式: React-Quill Editor (粗體/表格)。
+      * Google Doc 匯入: 輸入 URL 抓取內容。
+      * 變數按鈕: [UX] 游標插入: 點擊 {{Student_Name}} 按鈕時，變數標籤應插入 當前游標所在位置。
+      * 儲存與測試: 存入 DB、寄送測試信。
+頁籤 6: 歷年成績 (Archives)
+      * 查詢: 年度/類別/關鍵字 (模糊搜尋)。
+      * 展示: 列表 + 獎項視覺勳章。
+      * 匯出: CSV。
+5. 後端 API 功能規格 (Backend Specifications)
+A. 安全性 (Security)
+      * Referer Check, API Key, LockService.
+      * createSnapshot/restoreSnapshot 僅限 Admin。
+B. 核心 API
+      * login: 驗證密碼與類別，回傳該組別資料。
+      * submitScore: 寫入分數與建議 (允許空評語)，轉存 Judge Code。
+      * calculateResults: 計算排名與 1/3 額度。
+      * getArchivedResults: 跨年度搜尋。
+      * saveEmailTemplate: 儲存範本 (HTML)。
+      * importTemplateFromDoc: 從 Google Doc 抓取 HTML。
+      * importTeamsData [新增]: 接收由前端 SheetJS 解析好的 JSON 隊伍資料，進行批次寫入。
+      * restoreSnapshot: 系統還原。
+6. 非功能性需求 (Non-Functional Requirements)
+      * PWA Support:
+      * Installable: 提供 manifest.json 與 Icons，支援「加入主畫面」。
+      * Display: standalone 模式（無瀏覽器網址列）。
+      * Offline Fallback: 使用 Service Worker 快取應用程式 Shell，斷網時仍可操作介面（影片除外）。
+      * Resilience: Debounce, LocalStorage, CSV Recovery.
+      * Accessibility: WCAG AA Colors, Icons.
+      * RWD: Mobile-friendly (Smart Sticky, Keyboard Handling).
+      * Feedback: Tooltips for broken links, Dialogs for import results.
+7. 交付項目 (Deliverables)
+      1. Frontend: React Source Code (Vite + PWA Plugin) & Build Files.
+      2. Backend: Code.gs (GAS Ready).
+      3. DB: Google Sheet Template (With all columns & Configs).
+      4. Assets: App Icons (192x192, 512x512) for PWA Manifest.
+      5. Docs: Deploy Guide, User Manual, Recovery Manual.
+
+
+V48 react sheetjs
+給 AI 開發者的系統提示詞 (System Prompt for AI Developer)
+角色設定：
+你是一位精通 Google Apps Script (GAS)、Google Sheets 資料庫架構以及現代化前端 (React, Tailwind CSS, SheetJS) 開發的全端工程師。
+任務目標：
+請依據下方的 「軟體需求規格說明書 v48.0」，開發一套「簡報達人擂台賽評審評分系統」。
+核心開發原則 (Critical Instructions)：
+      1. 架構模式： 嚴格遵守「前後端分離」。前端為 React Single Page Application (SPA)，部署於 GitHub Pages；後端為 GAS Web App (API)。兩者透過 JSON 進行非同步通訊。
+      2. 資安模型 (Proxy Pattern)： Google 試算表必須保持 「私有 (Private)」 權限。前端絕不直接存取試算表，所有讀寫請求一律透過 GAS 後端的 doGet/doPost 代理執行，並驗證 API_Key 與 Referer。
+      3. 資料一致性：
+      * UUID： 隊伍 ID (Team_ID) 必須由系統自動生成 (UUIDv4)，不可依賴人工編號。
+      * 評審代號： 資料庫底層僅儲存 A~I 代號，前端顯示時再映射為真實姓名。
+      * 年度隔離： 所有查詢與寫入必須帶有 Competition_Year 參數，確保歷史資料不被汙染。
+      4. UX/UI 優先級：
+      * React Components： 使用 React 元件模組化開發（如 ScoreSlider, VideoPlayer, AdminTable）。
+      * RWD Mobile First： 評審介面必須針對 iPad 與手機優化，特別是「影片播放區」的防誤觸 Sticky 設計。
+      * 雙重編碼： 狀態顯示必須同時包含「顏色」與「圖示 (Material Icons)」。
+      * 漸進式存檔： 評語欄位雖為必填，但「暫存 (Draft)」時允許為空，不可阻擋評審存檔，僅在狀態燈號上做區隔。
+      5. 容錯與災難復原：
+      * 前端必須實作 Debounce (防抖) 機制，避免 API 請求過於頻繁。
+      * 前端必須實作 LocalStorage 離線暫存。
+      * 資料匯入： 前端使用 SheetJS (xlsx) 函式庫解析管理員上傳的 Excel/CSV 檔案，轉換為 JSON 後再傳送給後端 API 寫入。
+      * 後端必須實作 LockService 防止併發寫入衝突。
+      * 後台必須具備「CSV 匯入」與「快照還原」功能。
+簡報達人擂台賽評審評分系統
+軟體需求規格說明書 (Software Requirements Specification)
+版本： v48.0 (React & SheetJS Integrated Final Edition)
+專案代號： PresentationMaster-Online
+依據文件： 114學年度宜蘭瘋學習活動計畫
+適用情境： 居家線上評審 (Remote Grading)
+評審架構： 9 位實名評審 (代號 A~I)，後台表格設定，前台代號輸出。
+視覺風格： 暖色系 - 專業沉穩版 (Warm Professional)
+1. 系統架構與技術堆疊 (Architecture)
+      * 前端展示層 (Client Side):
+      * 平台: GitHub Pages (靜態網頁託管)。
+      * 核心框架: React 18+ (Hooks), Vite。
+      * 樣式庫: Tailwind CSS + Headless UI / Material UI。
+      * 關鍵套件:
+      * SheetJS (xlsx): 前端解析 Excel/CSV，減輕後端負擔。
+      * Quill.js / React-Quill: 富文字編輯器。
+      * Axios / Fetch: API 通訊。
+      * 職責: 介面渲染、YouTube 嵌入 (Smart Sticky)、狀態管理、熱更新、API 通訊、鍵盤偵測。
+      * 後端邏輯層 (Server Side):
+      * 平台: Google Apps Script (部署為 Web App)。
+      * 執行權限: 執行身分「我 (Me)」，存取權限「任何人 (Anyone)」。
+      * 職責: 安全性過濾、商業邏輯 (加權計算/額度試算)、併發鎖定、接收 JSON 批次寫入、郵件發送、UUID 生成、Google Doc 內容擷取。
+      * 資料儲存層 (Database):
+      * 平台: Google 試算表 (Google Sheets)。
+      * 隱私模型: 私有 (Private)。僅系統擁有者與 Service Account 可存取。
+      * 職責: 結構化資料儲存、歷史紀錄備份 (Snapshot)。
+2. UI/UX 設計規範 (Design Guidelines)
+      * 色彩系統 (Color Palette) - 溫暖且高對比:
+      * 主色 (Primary): 暖深棕色 (Warm Dark Brown, #3E2723) - 頂部導航。
+      * 行動呼籲色 (CTA): 赤陶紅 (Terra Cotta, #D84315) - 登入、存檔。
+      * 輔助色 (Secondary): 深琥珀色 (Dark Amber, #F57F17) - 圖示、選取。
+      * 背景色: 暖乳白 (#FFF8E1) / 純白 (#FFFFFF)。
+      * 狀態識別 (Status Identification) - [雙重編碼]:
+      * 🟢 完稿: 顏色 #2e7d32 + 圖示 check_circle。 (定義：分數>0 且 評語非空)
+      * 🟡 暫存: 顏色 #fbc02d + 圖示 edit。 (定義：分數未滿 或 評語為空)
+      * ⚪ 未評: 顏色 Gray + 圖示 radio_button_unchecked。
+      * 🔴 錯誤: 顏色 #c62828 + 圖示 error。
+      * 獎項視覺識別 (Visual Badges):
+      * 🥇 特優獎: 金色底 (#FFD700) + 深金字。
+      * 🥈 優等獎: 銀灰底 (#E0E0E0) + 深灰字。
+      * ✨ 特色獎 (探究/創意/學習): 淺藍底 (#E3F2FD) + 深藍字。
+      * 版面佈局原則:
+      * 桌面版: 左右分欄 (Split Pane)。
+      * 行動版: 單欄流式佈局 + 防誤觸智慧 Sticky Mini Bar。
+3. 資料庫結構規劃 (Google 試算表) - [完整定義]
+資料來源標記： 🔵[系統自動] / 🟠[管理員輸入] / 🟢[系統計算] / 🟣[評審輸入]
+(1) System_Config (系統設定)
+      * API_Key: 🟠 [Input: 直接在 Sheet 填寫]。
+      * Admin_Password: 🟠 [Input: 直接在 Sheet 填寫]。
+      * Last_Snapshot_Time: 🔵。
+(2) Judge_Setup (評審名單設定)
+      * [Input: 管理員直接在 Sheet 填寫]
+      * Judge_Code: 🔵 (A~I 固定)。
+      * Judge_Name: 🟠。
+      * Login_Password: 🟠。
+      * Category_Short: 🟠 (下拉選單，對應 Year_Config 的類別簡稱)。
+(3) Year_Config (年度設定)
+      * Competition_Year: 🟠 [Input: 後台系統設定介面]。
+      * Is_Active: 🟠 [Input: 後台系統設定介面]。
+      * Rubric_Link: 🟠 [Input: 後台系統設定介面]。
+      * Rules_Link: 🟠 [Input: 後台系統設定介面]。
+      * System_Lock: 🟠 [Input: 後台系統設定介面]。
+      * Category_Group_Map (JSON): 🔵 (依後台設定轉存)。
+      * Email_Template_Subject: 🔵 (依後台編輯器轉存)。
+      * Email_Template_Body: 🔵 (依後台編輯器轉存，儲存為 HTML String)。
+(4) Teams (隊伍資料)
+      * [Input: 後台匯入 CSV (經 SheetJS 解析) 或 手動新增介面]
+      * Team_ID: 🔵 (UUID)。
+      * Competition_Year: 🟠。
+      * Category: 🟠 (簡稱)。
+      * Group_Name: 🟠 (全銜)。
+      * School: 🟠。
+      * Work_Title: 🟠。
+      * Description: 🟠。
+      * 學生資料 (細項):
+      * Student1_Name, Student1_Email: 🟠。
+      * Student2_Name, Student2_Email: 🟠。
+      * Student3_Name, Student3_Email: 🟠。
+      * 教師資料 (細項):
+      * Teacher1_Name, Teacher1_Email: 🟠。
+      * Teacher2_Name, Teacher2_Email: 🟠。
+      * 聯絡資料:
+      * Contact_Person: 🟠。
+      * Contact_Phone: 🟠。
+      * 連結資料:
+      * MindMap_Link: 🟠。
+      * Slides_Link: 🟠。
+      * Video_Link: 🟠。
+      * Consent_Link: 🟠。
+      * Drive_Link: 🟠 (備用雲端，選填)。
+      * 管理標記:
+      * Link_Note: 🟠 (後台列表直接編輯)。
+(5) Scores (評分數據)
+      * Competition_Year ~ Team_ID: 🔵。
+      * Judge_Code: 🔵 (A~I)。
+      * Score_Content (40%): 🟣 [Input: 評審介面滑桿]。
+      * Score_Expression (30%): 🟣 [Input: 評審介面滑桿]。
+      * Score_Stage (20%): 🟣 [Input: 評審介面滑桿]。
+      * Score_Technique (10%): 🟣 [Input: 評審介面滑桿]。
+      * Total_Score: 🟢。
+      * Comment: 🟣 [Input: 評審介面評語框]。
+      * Award_Recommendation: 🟣 [Input: 評審介面下拉選單]。
+      * Session_ID: 🔵。
+      * Last_Updated: 🔵。
+(6) Final_Results (總成績表)
+      * Competition_Year ~ School: 🔵。
+      * Average_Score: 🟢。
+      * Rank: 🟢 (同分並列)。
+      * Rank_Award: 🟠 [Input: 後台成績結算下拉]。
+      * Feature_Award: 🟠 [Input: 後台成績結算下拉]。
+(7) [Hidden] Backup_Timestamp
+      * 🔵 快照備份分頁。
+4. 前端介面詳細規格 (Interface Specifications)
+A. 登入頁面 (Login Page)
+      * Header: 「114學年度 簡報達人擂台賽 評審系統」。
+      * Form:
+      1. 組別選擇: <optgroup> 分組顯示 6 大組別 + 管理員。
+      2. 身分選擇: 連動顯示真實姓名 (如：王小明 老師)。
+      * 邏輯: 選擇組別 -> 查詢 Category_Group_Map 找到 Category -> 查詢 Judge_Setup 找到該 Category 的評審 -> 顯示選單。
+      3. 密碼: 數字鍵盤優化。
+      * Action: 登入按鈕。
+B. 評審評分介面 (Judge Interface)
+      * App Bar: 「Hello, 王小明 老師 (評審 A)」 + 右側 Hot-Reload 按鈕。
+      * Sidebar: 單層列表 (僅顯示當前組別)，雙重編碼狀態燈號。
+      * Main Content:
+      * 卡片一 (播放區):
+      * YouTube 嵌入 (Smart Sticky: 輸入時收合，點展開按鈕 Scroll Top)。
+      * 外部連結按鈕 (含備用雲端 Drive_Link)。
+      * [UX] 連結失效提示: Tooltip 顯示 Link_Note 內容。
+      * 卡片二 (評分區):
+      * 滑桿 (0-5) + 微調按鈕 + 輸入框。
+      * 即時加權總分。
+      * 卡片三 (質性區):
+      * 特色表現獎推薦: 下拉選單 (單選，建議性質)。
+      * 評語: 必填標示，輸入時顯示「匿名保護」提示。
+      * Bottom: 存檔 FAB + 下載 CSV。
+C. 後台管理介面 (Admin Dashboard)
+      * 導航: Scrollable Tabs。
+頁籤 1: 系統設定
+      * API 連線。
+      * 年度參數 (含規準/簡章連結)。
+      * 類別與組別參數編輯器 (Web UI): 編輯 JSON 設定並回寫 Year_Config。
+      * 快照還原介面。
+頁籤 2: 隊伍管理
+      * 建立快照。
+      * 匯入隊伍:
+      * 技術: 使用 SheetJS 在前端解析 CSV/Excel。
+      * 邏輯: 解析 -> 預覽 -> 轉 JSON 傳給 API -> 後端生成 UUID。
+      * 欄位: 必須對應資料庫 Teams 表的所有輸入欄位。
+      * 新增/編輯隊伍 (手動介面):
+      * 介面欄位: 必須包含 基本資訊 + 3位學生 + 2位老師 + 聯絡人 + 5種連結 (含 Drive_Link)。
+      * 操作: 新增或更新資料庫。
+頁籤 3: 評分進度
+      * 堆疊長條圖 (綠/黃/灰)，顯示評審真名進度。
+頁籤 4: 成績結算
+      * 篩選: 依六組篩選。
+      * 列表: 顯示隊伍、評審分數、評審建議 (特色獎)、評審評語 (匿名)。
+      * 決策:
+      * 特色表現獎: 下拉選單。
+      * 特色優選獎: 下拉選單 (額度監控: 總數 1/3 無條件進位)。
+      * 工具: 重新計算、鎖定、匯入離線 CSV。
+頁籤 5: 輸出與寄信 (Output) [Rich Text & Import]
+      * 配額顯示: 今日剩餘 Email 額度。
+      * 列印: A4 評語表 (全銜標題、匿名評語)。
+      * 寄信設定:
+      * 編輯模式: React-Quill Editor (粗體/表格)。
+      * Google Doc 匯入: 輸入 URL 抓取內容。
+      * 變數按鈕: [UX] 游標插入: 點擊 {{Student_Name}} 按鈕時，變數標籤應插入 當前游標所在位置。
+      * 儲存與測試: 存入 DB、寄送測試信。
+頁籤 6: 歷年成績 (Archives)
+      * 查詢: 年度/類別/關鍵字 (模糊搜尋)。
+      * 展示: 列表 + 獎項視覺勳章。
+      * 匯出: CSV。
+5. 後端 API 功能規格 (Backend Specifications)
+A. 安全性 (Security)
+      * Referer Check, API Key, LockService.
+      * createSnapshot/restoreSnapshot 僅限 Admin。
+B. 核心 API
+      * login: 驗證密碼與類別，回傳該組別資料。
+      * submitScore: 寫入分數與建議 (允許空評語)，轉存 Judge Code。
+      * calculateResults: 計算排名與 1/3 額度。
+      * getArchivedResults: 跨年度搜尋。
+      * saveEmailTemplate: 儲存範本 (HTML)。
+      * importTemplateFromDoc: 從 Google Doc 抓取 HTML。
+      * importTeamsData [新增]: 接收由前端 SheetJS 解析好的 JSON 隊伍資料，進行批次寫入。
+      * restoreSnapshot: 系統還原。
+6. 非功能性需求 (Non-Functional Requirements)
+      * Resilience: Debounce, LocalStorage, CSV Recovery.
+      * Accessibility: WCAG AA Colors, Icons.
+      * RWD: Mobile-friendly (Smart Sticky, Keyboard Handling).
+      * Feedback: Tooltips for broken links, Dialogs for import results.
+7. 交付項目 (Deliverables)
+      1. Frontend: React Source Code (Vite Project Structure) & Build Files.
+      2. Backend: Code.gs (GAS Ready).
+      3. DB: Google Sheet Template (With all columns & Configs).
+      4. Docs: Deploy Guide, User Manual, Recovery Manual.
+
+
+V41
+簡報達人擂台賽評審評分系統
+軟體需求規格說明書 (Software Requirements Specification)
+版本： v41.0 (Data Source Explicit Definition Edition)
+專案代號： PresentationMaster-Online
+依據文件： 114學年度宜蘭瘋學習活動計畫
+適用情境： 居家線上評審 (Remote Grading)
+評審架構： 9 位實名評審 (代號 A~I)，後台表格設定，前台代號輸出。
+視覺風格： 暖色系 - 專業沉穩版 (Warm Professional)
+1. 系統架構與技術堆疊 (Architecture)
+本系統採用 前後端分離 (Decoupled Architecture) 與 私有資料庫代理 (Proxy Pattern) 架構，確保資安與運作彈性。
+      * 前端展示層 (Client Side):
+      * 平台: GitHub Pages (靜態網頁託管)。
+      * 技術: HTML5, CSS3 (Materialize CSS / Custom Flexbox), JavaScript (Vanilla ES6+)。
+      * 職責:
+      * 介面渲染 (RWD)。
+      * YouTube 嵌入播放器 (含智慧型 Sticky)。
+      * 狀態管理 (Debounce 自動存檔、離線 LocalStorage 暫存)。
+      * 熱更新資料 (Hot-Reload)。
+      * API 通訊 (Fetch)。
+      * 後端邏輯層 (Server Side):
+      * 平台: Google Apps Script (部署為 Web App)。
+      * 執行權限: 執行身分「我 (Me)」，存取權限「任何人 (Anyone)」。
+      * 職責:
+      * 安全性過濾 (Referer Check / API Key 驗證)。
+      * 商業邏輯 (分數計算、獎項額度試算)。
+      * 併發鎖定 (LockService)。
+      * CSV 資料解析 (災難復原用)。
+      * 郵件發送 (MailApp)。
+      * UUID 生成 (隊伍 ID 指派)。
+      * 資料儲存層 (Database):
+      * 平台: Google 試算表 (Google Sheets)。
+      * 隱私模型: 私有 (Private)。僅系統擁有者與 Service Account 可存取，絕不開啟共用連結。
+      * 職責: 結構化資料儲存、歷史紀錄備份 (Snapshot)。
+2. UI/UX 設計規範 (Design Guidelines)
+      * 色彩系統 (Color Palette) - 溫暖且高對比:
+      * 主色 (Primary): 暖深棕色 (Warm Dark Brown, #3E2723) - 用於頂部導航列 (App Bar)。象徵沉穩、書卷氣。
+      * 行動呼籲色 (CTA): 赤陶紅 (Terra Cotta, #D84315) - 用於登入、強制存檔、展開按鈕。
+      * 輔助色 (Secondary): 深琥珀色 (Dark Amber, #F57F17) - 用於圖示、選取狀態。
+      * 背景色: 暖乳白 (#FFF8E1) 網頁底色；純白 (#FFFFFF) 卡片底色。
+      * 狀態識別 (Status Identification) - [雙重編碼]:
+      * 強制搭配 Material Icons 以符合無障礙標準。
+      * 🟢 完稿 (Completed): 顏色 #2e7d32 + 圖示 check_circle (實心打勾)。
+      * 定義：四項分數 > 0 且 評語不為空。
+      * 🟡 暫存 (Draft): 顏色 #fbc02d + 圖示 edit (鉛筆) 或 hourglass_empty。
+      * 定義：分數已填但未滿，或分數已滿但評語為空。
+      * ⚪ 未評 (Empty): 顏色 Gray + 圖示 radio_button_unchecked (空心圓)。
+      * 🔴 錯誤 (Error): 顏色 #c62828 + 圖示 error (驚嘆號)。
+      * 獎項視覺識別 (Visual Badges):
+      * 🥇 特優獎: 金色底 (#FFD700) + 深金字。
+      * 🥈 優等獎: 銀灰底 (#E0E0E0) + 深灰字。
+      * ✨ 特色獎 (探究/創意/學習): 淺藍底 (#E3F2FD) + 深藍字。
+      * 版面佈局原則:
+      * 桌面版: 左右分欄 (Split Pane)。左導航 300px，右內容自適應。
+      * 行動版: 單欄流式佈局 + 防誤觸智慧 Sticky Mini Bar。
+3. 資料庫結構規劃 (Google 試算表) - [完整定義]
+資料來源標記說明：
+      * 🔵 [系統自動生成 (System Auto)]: 程式邏輯產生的 UUID、時間戳、Session ID。
+      * 🟠 [管理員輸入/匯入 (Admin Input)]: 需透過介面手動輸入或 CSV 匯入的資料。
+      * 🟢 [系統自動計算 (System Calc)]: 依據公式或邏輯計算出的數值。
+      * 🟣 [評審輸入 (Judge Input)]: 評審在評分介面輸入的資料。
+(1) System_Config (系統設定)
+      * API_Key: 🟠 [管理員輸入] (自訂亂碼)。
+      * Admin_Password: 🟠 [管理員輸入]。
+      * Last_Snapshot_Time: 🔵 [系統自動生成] (記錄最後一次快照時間)。
+(2) Judge_Setup (評審名單設定)
+      * Judge_Code: 🔵 [系統預設] (A~I，固定值)。
+      * Judge_Name: 🟠 [管理員輸入] (真實姓名)。
+      * Login_Password: 🟠 [管理員輸入]。
+      * Category_Short: 🟠 [管理員輸入] (下拉選單)。
+(3) Year_Config (年度設定)
+      * Competition_Year: 🟠 [管理員輸入] (如：114)。
+      * Is_Active: 🟠 [管理員輸入] (TRUE/FALSE)。
+      * Rubric_Link: 🟠 [管理員輸入]。
+      * Rules_Link: 🟠 [管理員輸入]。
+      * System_Lock: 🟠 [管理員輸入] (開關控制)。
+      * Category_Map (JSON): 🔵 [系統自動生成] (依據管理員在後台 UI 設定的對照表轉存)。
+      * Group_List (JSON): 🔵 [系統自動生成] (依據管理員在後台 UI 設定的清單轉存)。
+      * Email_Template_Subject: 🔵 [系統自動生成] (依據管理員在編輯器儲存的範本)。
+      * Email_Template_Body: 🔵 [系統自動生成] (依據管理員在編輯器儲存的範本)。
+(4) Teams (隊伍資料)
+      * Team_ID: 🔵 [系統自動生成] (UUID，匯入 CSV 時不需包含此欄位，由系統補上)。
+      * Competition_Year: 🟠 [管理員輸入/匯入]。
+      * Category: 🟠 [管理員輸入/匯入] (簡稱)。
+      * Group_Name: 🟠 [管理員輸入/匯入] (全銜)。
+      * School: 🟠 [管理員輸入/匯入]。
+      * Work_Title: 🟠 [管理員輸入/匯入]。
+      * Description: 🟠 [管理員輸入/匯入]。
+      * Student1_Name ~ Student3_Name: 🟠 [管理員輸入/匯入]。
+      * Student1_Email ~ Student3_Email: 🟠 [管理員輸入/匯入]。
+      * Teacher1_Name ~ Teacher2_Name: 🟠 [管理員輸入/匯入]。
+      * Teacher1_Email ~ Teacher2_Email: 🟠 [管理員輸入/匯入]。
+      * Contact_Person: 🟠 [管理員輸入/匯入]。
+      * Contact_Phone: 🟠 [管理員輸入/匯入]。
+      * MindMap_Link: 🟠 [管理員輸入/匯入]。
+      * Slides_Link: 🟠 [管理員輸入/匯入]。
+      * Video_Link: 🟠 [管理員輸入/匯入]。
+      * Consent_Link: 🟠 [管理員輸入/匯入]。
+      * Drive_Link: 🟠 [管理員輸入/匯入] (備用雲端硬碟，選填)。
+      * Link_Note: 🟠 [管理員輸入] (後台標記失效連結)。
+(5) Scores (評分數據)
+      * Competition_Year ~ Team_ID: 🔵 [系統自動寫入] (參照 Teams)。
+      * Judge_Code: 🔵 [系統自動寫入] (依據登入者)。
+      * Score_Content: 🟣 [評審輸入]。
+      * Score_Expression: 🟣 [評審輸入]。
+      * Score_Stage: 🟣 [評審輸入]。
+      * Score_Technique: 🟣 [評審輸入]。
+      * Total_Score: 🟢 [系統自動計算]。
+      * Comment: 🟣 [評審輸入]。
+      * Award_Recommendation: 🟣 [評審輸入]。
+      * Session_ID: 🔵 [系統自動生成]。
+      * Last_Updated: 🔵 [系統自動生成]。
+(6) Final_Results (總成績表)
+      * Competition_Year ~ School: 🔵 [系統自動寫入] (參照 Teams)。
+      * Average_Score: 🟢 [系統自動計算]。
+      * Rank: 🟢 [系統自動計算]。
+      * Rank_Award: 🟠 [管理員輸入] (線上會議決策)。
+      * Feature_Award: 🟠 [管理員輸入] (線上會議決策)。
+(7) [Hidden] Backup_Timestamp
+      * 整個工作表: 🔵 [系統自動生成] (快照備份)。
+4. 前端介面詳細規格 (Interface Specifications)
+A. 登入頁面 (Login Page)
+      * 版面: 暖乳白背景，中央白色 Material Card (400px)。
+      * Header: 標題「114學年度 簡報達人擂台賽 評審系統」。
+      * Form (分組選單 Grouping):
+      1. 身分選擇 (Select):
+      * 使用 <optgroup> 標籤依類別分組。
+      * 顯示範例：
+      * ▼ 宜蘭在地 (簡稱)
+      * 王小明 老師
+      * 李大華 老師
+      2. 密碼輸入框 (Input): Floating Label (聚焦變赤陶紅)，附眼睛圖示。
+      * Action: 登入按鈕 (赤陶紅)，點擊顯示 Spinner。
+      * Footer: 連結按鈕：「📌 系統使用說明與緊急聯絡」。
+B. 評審評分介面 (Judge Interface)
+1. 頂部應用程式列 (App Bar)
+      * 樣式: 暖深棕色 背景，白色文字。
+      * 左側標題: 「Hello, 王小明 老師 (評審 A)」 (括號內顯示系統代號)。
+      * 右側功能圖示:
+      * refresh (重新整理資料 / Hot-Reload): 不登出情況下更新影片連結。
+      * menu_book (規準)、description (簡章)、help_outline (教學)、exit_to_app (登出)。
+2. 左側隊伍導航 (Sidebar)
+      * 結構: 分為兩個區塊 Header (依簡稱顯示)：
+      * ▼ 宜蘭在地...國小組
+      * ▼ 宜蘭在地...國中組
+      * 列表項目:
+      * 左側圖示區: 依據狀態顯示 check_circle / edit / radio_button_unchecked。
+      * 文字區: 學校名稱 + 作品名稱。
+      * 選取樣式: 背景淺琥珀色，左側赤陶紅飾條。
+3. 右側主要工作區 (Main Content)
+      * 卡片一：作品播放區 (Anti-Mis-touch Sticky)
+      * 正常模式: 顯示完整 YouTube Player (iframe)。
+      * Mini Bar 模式 (當輸入框 Focus 時):
+      * 自動收合為頂部 60px 高 Sticky Bar，Z-Index > Keyboard。
+      * 右側顯示顯眼的 🔽 展開 按鈕 (44x44px 熱區)。
+      * 點擊 🔽 -> 收起鍵盤 (Blur) -> 還原卡片 -> Scroll To Top。
+      * 外部連結列:
+      * 🧠 Mindomo 心智圖 (重點標示)。
+      * 📊 簡報檔案、📄 同意書。
+      * ☁️ 備用雲端硬碟 (選填，若有資料則顯示)。
+      * 若後台有 Link_Note，按鈕顯示警告圖示。
+      * 卡片二：評分滑桿區 (Scoring) [依據計畫權重]:
+      * 簡報內容 (40%): 滑桿 (0-5) + 微調按鈕 + 輸入框。
+      * 表達能力 (30%): 滑桿 (0-5) + 微調按鈕 + 輸入框。
+      * 台風表現 (20%): 滑桿 (0-5) + 微調按鈕 + 輸入框。
+      * 製作技巧 (10%): 滑桿 (0-5) + 微調按鈕 + 輸入框。
+      * 總分儀表板: 即時顯示加權後總分 (如：88.4)。
+      * 卡片三：質性評量 (Feedback)
+      * 特色表現獎推薦 (Select): 下拉選單 [請選擇, 探究之星, 創意之星, 學習之星] (單選)。
+      * 評語 (Textarea):
+      * 標籤：「請輸入評語 (必填) *」。
+      * 匿名保護提示: Focus 時顯示 🛡️ 🎭 匿名保護中 (系統將以 "評審 A" 顯示您的評語)。
+      * 未填提示: 輸入框下方顯示「需填寫評語，該隊伍才會標示為『完稿』」。
+      * 底部存檔區 & 訊息回饋
+      * Action: 右側 FAB save 按鈕 (赤陶紅)。
+      * Snackbar: 顯示「🟡 已暫存分数，請補評語」或「🟢 完稿」。
+      * 左側: 📥 下載本機紀錄 (CSV 備份)。
+C. 後台管理介面 (Admin Dashboard)
+導航: 可滑動式 (Scrollable) Tabs。
+頁籤 1: 系統設定 (Settings)
+      * API 連線設定: (含摺疊教學)。
+      * 年度參數設定 (Year Configuration) [詳細展開]:
+      * 輸入框：比賽年度 🟠。
+      * 輸入框：評分規準連結 🟠。
+      * 輸入框：競賽簡章連結 🟠。
+      * 開關：系統鎖定 🟠。
+      * 類別與組別參數設定 (Category & Group Configuration) [新增 - 管理員專用]:
+      * 類別對照表編輯: 🟠 管理員輸入。
+      * 組別清單編輯: 🟠 管理員輸入。
+      * 按鈕： 儲存所有設定。
+      * 評審名單檢視: (唯讀，提示去 Google Sheet Judge_Setup 分頁修改)。
+頁籤 2: 隊伍管理 (Teams)
+      * 📸 建立系統快照。
+      * 📂 匯入隊伍 (支援 6 組, 追加/更新/覆蓋模式)。
+      * 重要: 匯入的 CSV 檔 不應包含 Team_ID。系統會在匯入當下自動為每一筆資料產生新的 UUID。
+      * CSV 格式要求: 需包含 School, Work_Title, Video_Link, Drive_Link 等橙色標記欄位。
+      * ➕ 新增隊伍 (手動單筆輸入)。
+      * 表單新增: 備用雲端硬碟網址 (Drive Link) 輸入框 🟠 (選填)。
+      * 連結備註編輯。
+頁籤 3: 評分進度 (Progress)
+      * 堆疊長條圖 (Stacked Bar): 綠(完稿) / 黃(評分中) / 灰(未開始)。
+      * 標籤: 直接顯示評審真名 (如 王小明: 80%)。
+頁籤 4: 成績結算 (Results)
+      * 雙軌獎項決策區:
+      * 特色表現獎: 下拉選擇 🟠 (無上限)。
+      * 特色優選獎 (特優/優等):
+      * 額度監控: 顯示 目前數量: 3 / 上限: 11 (總隊數的三分之一，無條件進位)。
+      * 防呆: 若超過 1/3，顯示紅色警告文字。
+      * 工具列: 🔄 重新計算、📤 匯入評審離線評分 (CSV)、📸 建立成績快照、🔒 鎖定成績。
+頁籤 5: 輸出與寄信 (Output)
+      * 配額顯示: 今日剩餘 Email 額度。
+      * 列印: 產生 A4 評語表 (強制 Name -> Code 匿名化，標題使用全銜)。
+      * 寄信:
+      * 範本編輯器 (Editor): 🟠 管理員編輯並儲存。
+      * 發送對象: 所有參賽隊伍。
+      * 郵件內容: 針對每一隊產生一封專屬郵件，包含該隊獲得的獎項 (特色獎/優選獎) 以及 三位評審的評語 (匿名化)。
+      * 操作: 一鍵群發或單筆補寄。
+頁籤 6: 歷年成績 (Archives) [數位校史館]
+      * 篩選區: 年度 (114, 113...)、類別、關鍵字搜尋 (學校/學生)。
+      * 列表: 顯示歷年得獎紀錄，獎項分雙軌欄位呈現，採用 Visual Badges (金銀/藍標籤)。
+      * 匯出: 📥 匯出查詢結果 (CSV)。
+      * 獎項欄位樣式:
+      * 特色優選獎: 🥇 特優獎, 🥈 優等獎。
+      * 特色表現獎: ✨ 探究之星, 💡 創意之星, 📚 學習之星。
+5. 後端 API 功能規格 (Backend Specifications)
+A. 安全性與限制 (Security)
+      1. Referer Check: 強制檢查 Header，拒絕非 GitHub Pages 請求。
+      2. API Key: 強制驗證。
+      3. 權限分流: createSnapshot 僅限 Admin Token。
+      4. 隱私保護: 試算表 Private，Service Account 代理存取。
+B. 核心邏輯
+      1. login (實名驗證):
+      * 讀取 Judge_Setup 表。
+      * 驗證成功後，回傳該評審負責類別下的 國小組 + 國中組 隊伍資料。
+      2. submitScore:
+      * 接收評分 (允許空評語)。
+      * 接收 Award_Recommendation (特色獎推薦)。
+      * 使用 LockService (30s timeout) 防止寫入衝突。
+      * 寫入時將 Judge Name 轉為 Judge Code (A~I) 存入資料庫。
+      3. calculateResults:
+      * 計算加權總分。
+      * 依據 Group_Name (6組) 進行獨立排名與額度計算 (不可跨組比較)。
+      * 計算並回傳該組別的 1/3 額度限制數值。
+      4. getArchivedResults:
+      * 支援跨年度、關鍵字模糊搜尋。
+      5. importJudgeCSV:
+      * 災難復原用，批次寫入分數。
+      6. saveEmailTemplate [新增]:
+      * 接收 Subject, Body，寫入 Year_Config。
+6. 非功能性需求 (Non-Functional Requirements)
+      1. Accessibility: 顏色對比符合 WCAG AA，所有狀態皆有 Icon 輔助。
+      2. RWD: 行動版輸入時自動收合影片 (Mini Bar)，Tabs 支援滑動。
+      3. Resilience: 前端 Debounce (3秒)，後端 CSV 災難復原匯入。
+7. 交付項目 (Deliverables)
+      1. Frontend Package: HTML/CSS (暖色系), JS (Hot-Reload, Mini Bar, Archives Search)。
+      2. Backend Script: Code.gs (含 Sheet-to-JSON 轉換、額度計算邏輯)。
+      3. Database Template: Google Sheet (含 Judge_Setup, Year_Config, Teams 完整預設欄位)。
+      4. Documentation:
+      * Day 0 部署手冊 (含密碼設定)。
+      * 使用者手冊 (含 114 年評分標準說明)。
+      * 災難復原手冊。
+
+
+v31
+這是一份整合了 「全站搜尋 (Cross-Year Search)」、「榮譽榜視覺化 (Visual Badges)」 與 「RWD 彈性導航」 的 v31.0 旗艦版需求規格說明書。
+此版本將後台管理系統從單純的「當年度控制台」升級為具備長尾價值的 「數位校史館資料庫」，並解決了功能擴充後的介面擠壓問題。
+________________
+
+
+簡報達人擂台賽評審評分系統
+軟體需求規格說明書 (Software Requirements Specification)
+版本： v31.0 (Flagship & Legacy Archive Edition)
+專案代號： PresentationMaster-Online
+適用情境： 居家線上評審 (Remote Grading)
+評審架構： 9 位實名評審 (代號 A~I)，後台表格設定，前台代號輸出。
+視覺風格： 暖色系 - 專業沉穩版 (Warm Professional)
+________________
+
+
+1. 系統架構與技術堆疊 (Architecture)
+      * 前端展示層 (Client Side):
+      * 平台: GitHub Pages。
+      * 技術: HTML5, CSS3 (Materialize CSS), JavaScript (Vanilla ES6+)。
+      * 職責: 介面渲染、YouTube 嵌入、智慧型 Sticky、狀態管理 (Debounce)、熱更新、API 通訊、分組選單渲染、跨年度檢索。
+      * 後端邏輯層 (Server Side):
+      * 平台: Google Apps Script (Web App)。
+      * 職責: 請求過濾、商業邏輯、併發鎖定、配額監控、動態讀取評審設定表、CSV 解析、全域關鍵字搜尋。
+      * 資料儲存層 (Database):
+      * 平台: Google 試算表 (Google Sheets)。
+      * 隱私模型: 私有 (Private)。
+________________
+
+
+2. UI/UX 設計規範 (Design Guidelines)
+      * 色彩系統 (Color Palette):
+      * 主色: 暖深棕色 (Warm Dark Brown, #3E2723)。
+      * CTA色: 赤陶紅 (Terra Cotta, #D84315)。
+      * 輔助色: 深琥珀色 (Dark Amber, #F57F17)。
+      * 背景色: 暖乳白 (#FFF8E1) / 純白 (#FFFFFF)。
+      * 狀態識別 (雙重編碼): 🟢 完稿 / 🟡 暫存 / ⚪ 未評 / 🔴 錯誤。
+      * 獎項視覺識別 (Visual Badges) [新增]:
+      * 特優/第一名: 🥇 金色底 (#FFD700) + 深金字。
+      * 優等/第二名: 🥈 銀灰底 (#E0E0E0) + 深灰字。
+      * 甲等/第三名: 🥉 銅橘底 (#FFCCBC) + 深褐字。
+      * 特色獎: ✨ 淺藍底 (#E3F2FD) + 深藍字。
+      * 心理暗示設計: 評語區加入「匿名保護」圖示。
+      * 導航體驗: 後台 Tab Bar 採用 Scrollable (可滑動式) 設計，適配窄螢幕。
+________________
+
+
+3. 資料庫結構規劃 (Google 試算表)
+注意：此表為「廚房」，僅系統擁有者有權限進入。
+      1. System_Config (系統設定): API_Key, Admin_Password, Last_Snapshot_Time.
+      2. Judge_Setup (評審名單設定): Code (A~I), Name, Password, Category.
+      3. Year_Config (年度設定):
+      * 比賽年度 (Competition_Year): 核心欄位，用於區分歷史資料。
+      * 規準/簡章連結, 系統鎖定, Category_Definitions.
+      4. Teams (隊伍資料): 比賽年度, 類別, 組別, 作品資料...
+      5. Scores (評分數據): 比賽年度, 類別, 組別, 評審代號, 分數, 評語...
+      6. Final_Results (總成績表):
+      * 欄位: 比賽年度, 類別, 組別, 隊伍ID, 學校, 學生, 平均分, 排名, 獎項。
+      * 說明：搜尋引擎將針對此表進行跨年度掃描。
+      7. [Hidden] Backup_Timestamp: 快照備份表。
+________________
+
+
+4. 前端介面詳細規格 (Interface Specifications)
+A. 登入頁面 (Login Page)
+      * 版面: 暖乳白背景，中央白色 Material Card (400px)。
+      * Header: 標題「{{比賽年度}} 簡報達人擂台賽 評審系統」。
+      * Form: 身分選單 (分組顯示)、密碼輸入框。
+      * Action: 登入按鈕 (赤陶紅)。
+B. 評審評分介面 (Judge Interface)
+      * App Bar: 「Hello, 王小明 老師 (評審 A)」。右側含 refresh 熱更新。
+      * Sidebar: 國小/國中分組，雙重編碼狀態燈號。
+      * Main Content:
+      * 播放區: Anti-Mis-touch Sticky Mini Bar (含展開按鈕)。
+      * 評分區: 滑桿 + 微調按鈕。
+      * 評語區: 必填 + 匿名保護提示。
+      * Bottom: 存檔 FAB + 下載 CSV。
+C. 後台管理介面 (Admin Dashboard)
+導航列設計 (Responsive Tabs) [優化]:
+      * 樣式: 頂部 Tab Bar 設定 overflow-x: auto。
+      * 視覺回饋: 若標籤寬度超出螢幕，右側邊緣顯示淡白色漸層陰影，提示「可向左滑動」。
+      * 目的: 確保在筆電 (13吋) 螢幕上，6 個頁籤不會被擠壓變形。
+頁籤 1: 系統設定 (Settings)
+      * API 設定、年度參數設定、系統鎖定、評審名單檢視。
+頁籤 2: 隊伍管理 (Teams)
+      * 快照、匯入 (含防呆)、連結備註編輯。
+頁籤 3: 評分進度 (Progress)
+      * 堆疊長條圖 (綠/黃/灰)，顯示實名進度。
+頁籤 4: 成績結算 (Results)
+      * 當年度成績計算、鎖定、匯入離線評分 (CSV)。
+頁籤 5: 輸出與寄信 (Output)
+      * 配額顯示、列印/寄信 (匿名化輸出)。
+頁籤 6: 歷年成績 (Archives) [數位校史館功能]
+      * 頂部篩選區 (Multi-dimensional Search):
+      * 年度 (Dropdown): 選項含「全部年度」、「113」、「112」... (預設：全部年度)。
+      * 類別 (Dropdown): 篩選特定類別。
+      * 關鍵字搜尋 (Input):
+      * Placeholder: 「輸入學校或學生姓名...」。
+      * 邏輯: 若年度選「全部」，輸入「大同國中」，則列出該校歷年所有紀錄。
+      * 按鈕: 🔍 查詢。
+      * 資料展示區 (Data Table with Badges):
+      * 表格欄位: 年度 | 排名 | 組別 | 學校 | 作品 | 平均分 | 獎項。
+      * 獎項欄位樣式 (Visual Badges):
+      * 🥇 特優/第一名 (金底深金字)
+      * 🥈 優等/第二名 (銀底深灰字)
+      * 🥉 甲等/第三名 (銅底深褐字)
+      * ✨ 特色獎 (淺藍底深藍字)
+      * 匯出功能: 📥 匯出查詢結果 (CSV)。
+________________
+
+
+5. 後端 API 功能規格 (Backend Specifications)
+A. 安全性與限制 (Security)
+      1. Referer Check: 強制檢查 Header。
+      2. API Key: 強制驗證。
+      3. 權限分流: createSnapshot 僅限 Admin。
+      4. 隱私保護: 試算表 Private。
+B. 核心邏輯
+      1. getData: 回傳當前年度隊伍、評審設定、歷年列表。
+      2. getArchivedResults [搜尋升級]:
+      * 接收參數：Target_Year (可為 null), Keyword (字串)。
+      * 邏輯:
+      * 若 Target_Year 為空，掃描 Final_Results 所有資料。
+      * 若 Keyword 有值，對 School, Student_Name, Work_Title 欄位進行模糊比對 (Contains)。
+      * 回傳符合條件的陣列。
+      3. login: 實名驗證。
+      4. submitScore: 寫入評分。
+________________
+
+
+6. 非功能性需求 (Non-Functional Requirements)
+      1. Responsive: 後台 Tabs 需支援水平捲動；行動版 Sticky Bar 防誤觸。
+      2. Usability: 歷年查詢需支援模糊搜尋；獎項需有視覺區隔。
+      3. Accessibility: 顏色對比符合 WCAG AA。
+________________
+
+
+7. 交付項目 (Deliverables)
+      1. Frontend Package:
+      * HTML/CSS: 暖色系, Badge Styles, Scrollable Tabs CSS.
+      * JS: Hot-Reload, Multi-search Logic.
+      2. Backend Script: Code.gs (含跨年度搜尋邏輯)。
+      3. Database Template: Google Sheet (含 Competition_Year 欄位)。
+      4. Documentation: Day 0 部署手冊、使用者手冊、校史查詢操作指南。
+________________
+
+
+最終確認狀態：
+v31.0 已整合 「跨年度關鍵字搜尋」、「榮譽榜視覺化」 與 「RWD 導航」。這不僅是一套評審系統，更是一套具備行政查詢價值的完整解決方案。
+規格書已涵蓋所有細節，請開發團隊依此執行。
+
+
+v23
+這是一份集結了所有討論精華、防呆機制、UX 優化與資安考量的 **v23.0 最終定案版需求規格說明書**。
+
+
+此版本已包含「居家線上評審」、「暖色系視覺」、「漸進式存檔」、「無障礙雙重編碼」、「行動版鍵盤優化」以及「廚房/服務生資安模型」的完整定義。
+
+
+---
+
+
+# 簡報達人擂台賽評審評分系統
+
+
+## 軟體需求規格說明書 (Software Requirements Specification)
+
+
+**版本：** v23.0 (Final Golden Master)
+**專案代號：** PresentationMaster-Online
+**適用情境：** 居家線上評審 (Remote Grading)
+**評審架構：** 3 類別 x 3 評審 (每人評該類別之國中/國小組)
+**視覺風格：** 暖色系 - 專業沉穩版 (Warm Professional)
+
+
+---
+
+
+### 1. 系統架構與技術堆疊 (Architecture)
+
+
+* **前端展示層 (Client Side):**
+* **平台:** GitHub Pages (靜態網頁託管)。
+* **技術:** HTML5, CSS3 (Materialize CSS), JavaScript (Vanilla ES6+)。
+* **職責:** 介面渲染、YouTube 嵌入、**智慧型 Sticky (含還原機制)**、狀態管理 (Debounce)、**微文案邏輯判斷**、API 通訊。
+
+
+
+
+* **後端邏輯層 (Server Side):**
+* **平台:** Google Apps Script (部署為 Web App)。
+* **執行權限:** 執行身分「我 (Me)」，存取權限「任何人 (Anyone)」。
+* **職責:** 請求過濾 (Referer/API Key)、商業邏輯、併發鎖定 (LockService)、配額監控、權限分流 (Admin/Judge)。
+
+
+
+
+* **資料儲存層 (Database):**
+* **平台:** Google 試算表 (Google Sheets)。
+* **隱私模型:** **私有 (Private)**。僅擁有者可見，程式透過 GAS 服務帳號寫入，**絕不開啟共用連結**。
+* **職責:** 結構化資料儲存、歷史紀錄備份 (Snapshot)。
+
+
+
+
+
+
+---
+
+
+### 2. UI/UX 設計規範 (Design Guidelines)
+
+
+* **色彩系統 (Color Palette) - 溫暖且高對比:**
+* **主色 (Primary):** **暖深棕色 (Warm Dark Brown, #3E2723)** - 用於頂部導航列。象徵沉穩權威。
+* **行動呼籲色 (CTA):** **赤陶紅 (Terra Cotta, #D84315)** - 用於登入、強制存檔等重要操作。
+* **輔助色 (Secondary):** **深琥珀色 (Dark Amber, #F57F17)** - 用於圖示、選取狀態。
+* **背景色:** 暖乳白 (#FFF8E1) 網頁底色；純白 (#FFFFFF) 卡片底色。
+
+
+
+
+* **狀態識別 (Status Identification) - [雙重編碼 Double Coding]:**
+* *強制搭配 Material Icons 以符合無障礙標準，不只依賴顏色。*
+* 🟢 **完稿 (Completed):** 顏色 `#2e7d32` + 圖示 `check_circle` (實心打勾)。
+* *定義：* 四項分數 > 0 且 評語不為空。
+
+
+
+
+* 🟡 **暫存 (Draft):** 顏色 `#fbc02d` + 圖示 `edit` (鉛筆) 或 `hourglass_empty`。
+* *定義：* 分數已填但未滿，或分數已滿但評語為空。
+
+
+
+
+* ⚪ **未評 (Empty):** 顏色 `Gray` + 圖示 `radio_button_unchecked` (空心圓)。
+* 🔴 **錯誤 (Error):** 顏色 `#c62828` + 圖示 `error` (驚嘆號)。
+
+
+
+
+* **版面佈局原則:**
+* **桌面版:** 左右分欄 (Split Pane)。左導航 300px，右內容自適應。
+* **行動版:** 單欄流式佈局 + **可展開式 Sticky Mini Bar**。
+
+
+
+
+
+
+---
+
+
+### 3. 資料庫結構規劃 (Google 試算表)
+
+
+**注意：此表為「廚房」，僅系統擁有者有權限進入。**
+
+
+1. **System_Config (系統設定):**
+* `API_Key`: 通訊金鑰 (自訂亂碼)。
+* `Admin_Password`: 管理員登入密碼 (直接在此欄位設定)。
+* `Judge_Passwords`: 存放 JSON 格式的 9 組評審密碼 (如 `{"Category1_JudgeA": "1234", ...}`)。
+* `Last_Snapshot_Time`: 最後快照時間。
+
+
+
+
+2. **Year_Config (年度設定):**
+* 年度, 規準連結, 簡章連結, 系統鎖定狀態.
+* `Category_Definitions`: 定義三大類別名稱。
+
+
+
+
+3. **Teams (隊伍資料):**
+* 年度, 類別, 組別, 作品資料, YouTube連結, Link_Note (連結備註)...
+
+
+
+
+4. **Scores (評分數據):**
+* 欄位: 年度, 類別, 組別, 評審代號, 隊伍ID, 各項分數.
+* **評語 (Comment):** 允許空值寫入 (支援漸進式存檔)。
+* **Session_ID:** 用於偵測重複登入。
+
+
+
+
+5. **Final_Results (總成績表):** 總成績、排名、獎項。
+6. **[Hidden] Backup_Timestamp:** 管理員執行快照時產生的隱藏備份表。
+
+
+---
+
+
+### 4. 前端介面詳細規格 (Interface Specifications)
+
+
+#### A. 登入頁面 (Login Page)
+
+
+* **版面配置:**
+* 背景: 暖乳白搭配深棕色幾何線條。
+* 卡片: 中央 400px 白色卡片。
+
+
+
+
+* **內容元素:**
+1. **Header:** 標題「簡報達人擂台賽 評審系統」，深棕色字體。
+2. **Form (防呆下拉選單):**
+* **類別選單 (Select):** 「請選擇評審類別」 (含三大類別 + 管理員)。
+* **身分選單 (Select):** `評審 A`、`評審 B`、`評審 C` (依類別連動)。
+* **密碼輸入框 (Input):** Floating Label (聚焦變赤陶紅)，附眼睛圖示。手機自動跳出數字鍵盤。
+
+
+
+
+3. **Action:**
+* **登入按鈕:** 赤陶紅背景，白字，點擊顯示 Spinner。
+
+
+
+
+4. **Footer:**
+* 連結按鈕：「📌 系統使用說明與緊急聯絡」。
+
+
+
+
+
+
+
+
+
+
+#### B. 評審評分介面 (Judge Interface)
+
+
+**1. 頂部應用程式列 (App Bar)**
+
+
+* **樣式:** **暖深棕色** 背景，白色文字。
+* **內容:** 左側顯示類別與評審代號；右側顯示規準、簡章、教學、登出按鈕。
+
+
+**2. 左側隊伍導航 (Sidebar) - [雙重編碼列表]**
+
+
+* **結構:** 分為「▼ 國小組」與「▼ 國中組」兩個區塊。
+* **列表項目:**
+* **左側圖示區:** 依據狀態顯示 `check_circle` / `edit` / `radio_button_unchecked`。
+* **文字區:** 學校名稱 + 作品名稱。
+* **選取樣式:** 背景淺琥珀色，左側赤陶紅飾條。
+
+
+
+
+
+
+**3. 右側主要工作區 (Main Content)**
+
+
+* **卡片一：作品播放區 (Smart Sticky with Restore)**
+* **正常模式:** 顯示完整 YouTube Player (iframe) 與外部連結按鈕。
+* **Mini Bar 模式 (當輸入框 Focus 時):**
+* 自動收合為頂部 60px 高的條狀物 (Sticky)。
+* 左側顯示 `▶️ 播放/暫停` 與時間碼。
+* 右側顯示顯眼的 **`🔽 展開` (Expand)** 按鈕。
+* **邏輯:** 點擊 `🔽` -> 收起鍵盤 (Blur) -> 還原影片卡片尺寸。
+
+
+
+
+* **外部連結列:** Outlined Buttons。若後台有 `Link_Note`，按鈕顯示警告圖示。
+
+
+
+
+* **卡片二：評分滑桿區 (Scoring)**
+* **互動:** 滑桿 + `➖/➕` 微調按鈕 + 數字輸入框 (三者連動)。
+* **配色:** 深棕色按鈕，赤陶紅滑桿。
+
+
+
+
+* **卡片三：質性評量 (Feedback)**
+* **特色推薦:** 下拉選單。
+* **評語 (Textarea):**
+* **標籤:** 「請輸入評語 (必填) *」。
+* **提示:** 若未填寫，顯示「需填寫評語，該隊伍才會標示為『完稿』」。
+
+
+
+
+
+
+
+
+* **底部存檔區 & 訊息回饋 (Feedback Loop)**
+* **Action:** 右側 FAB `save` 按鈕 (赤陶紅)。
+* **Snackbar / 狀態列訊息:**
+* **🟡 暫存:** 「分數已存，請補充評語以完稿」。
+* **🟢 完稿:** 「評分與評語皆已完整存檔」。
+* **🔴 離線:** 「網路中斷，資料已暫存於本機」。
+
+
+
+
+* **左側連結:** `📥 下載本機紀錄` (CSV 備份)。
+
+
+
+
+
+
+#### C. 後台管理介面 (Admin Dashboard)
+
+
+**頁籤 1: 系統設定 (Settings)**
+
+
+* API 設定、年度設定、系統鎖定。
+
+
+**頁籤 2: 隊伍管理 (Teams)**
+
+
+* **快照:** `📸 建立系統快照` (深棕色按鈕)。
+* **匯入:** 支援追加/更新/覆蓋 (含防呆確認碼)。
+* **連結備註:** 管理員可在此標記某連結失效，同步提示給評審。
+
+
+**頁籤 3: 評分進度 (Progress) - [堆疊圖表]**
+
+
+* **呈現方式:** **堆疊長條圖 (Stacked Bar Chart)**。
+* 🟩 綠色段: 已完稿。
+* 🟨 **黃色段: 評分中 (Draft)** - *關鍵催稿指標*。
+* ⬜ 灰色段: 未開始。
+
+
+
+
+* **Tooltip:** 滑鼠移至黃色段，顯示具體評審姓名與暫存數量。
+
+
+**頁籤 4: 成績結算 (Results)**
+
+
+* **防呆:** 結算前偵測是否有「黃燈 (未寫評語)」隊伍並警告。
+* **功能:** 建立成績快照、鎖定成績、下拉決選獎項。
+
+
+**頁籤 5: 輸出與寄信 (Output)**
+
+
+* **配額顯示:** 顯示今日剩餘 Email 額度。
+* **功能:** 列印 (A4 優化)、寄信。
+
+
+---
+
+
+### 5. 後端 API 功能規格 (Backend Specifications)
+
+
+#### A. 安全性與限制 (Security)
+
+
+1. **Referer Check:** 強制檢查 Header，拒絕非 GitHub Pages 的請求。
+2. **API Key:** 所有請求必須夾帶 Key。
+3. **權限分流:** `createSnapshot` 僅限 Admin Token 觸發。
+4. **隱私保護:** 試算表權限保持預設 (Private)，僅透過 Service Account (Me) 存取。
+
+
+#### B. 核心邏輯
+
+
+1. **`submitScore`:**
+* 接收評分資料 (允許空評語)。
+* 使用 LockService (30s timeout) 防止寫入衝突。
+* 更新 Session ID。
+
+
+
+
+2. **`createSnapshot`:**
+* 複製並隱藏工作表，命名為 `Backup_YYYYMMDD_HHMMSS`。
+
+
+
+
+3. **`login`:**
+* 驗證類別與密碼。
+* 回傳該類別下所有國中/國小隊伍資料。
+
+
+
+
+
+
+---
+
+
+### 6. 非功能性需求 (Non-Functional Requirements)
+
+
+1. **Accessibility:** 顏色對比符合 WCAG AA，必須使用圖示輔助顏色。
+2. **RWD:** 行動版輸入時自動收合影片 (Mini Bar)。
+3. **Performance:** 前端 Debounce (3秒) 減少 API 呼叫。
+
+
+---
+
+
+### 7. 交付項目 (Deliverables)
+
+
+1. **Frontend Package:**
+* `js/app.js`: 含 Mini Bar 邏輯、狀態判斷、Debounce。
+* HTML/CSS: 暖色系 Material Design 實作。
+
+
+
+
+2. **Backend Script:** `Code.gs` (含 Referer Check、Snapshot 邏輯)。
+3. **Database Template:** Google Sheet 預設結構。
+4. **Documentation:**
+* **Day 0 部署手冊:** 含「如何設定試算表密碼」與「取得 API Key」。
+* **使用者手冊:** 評審操作指南 (含圖示對照表)。
+* **災難復原手冊:** 如何從 Backup 還原資料。
+
+
+
+
+
+
+---
+
+
+**最終確認：**
+v23.0 規格書已定案。系統將以 **私有試算表** 為核心，搭配 **暖色系無障礙介面** 與 **前後端分離架構** 進行開發。開發團隊將嚴格遵守此規格進行程式碼撰寫。
+
+
+v20
+這是一份針對 v21.0 (最終修訂版) 的需求規格說明書。
+此版本根據您的最新指示進行了關鍵邏輯修正：「評語雖為必填，但不阻擋存檔」。
+這意味著系統將採用 「漸進式完成 (Progressive Completion)」 的邏輯——評審可以隨時暫存不完整的資料（例如只打分數先不寫評語），避免因一時寫不出來而無法存檔的焦慮，但系統會在狀態燈號上區分「暫存」與「完稿」。
+________________
+
+
+簡報達人擂台賽評審評分系統
+軟體需求規格說明書 (Software Requirements Specification)
+版本： v21.0 (Draft-Friendly & Progressive Save Edition)
+專案代號： PresentationMaster-Online
+適用情境： 居家線上評審 (Remote Grading)
+評審架構： 3 類別 x 3 評審 (每人評該類別之國中/國小組)
+視覺風格： 暖色系 - 專業沉穩版 (Warm Professional)
+________________
+
+
+1. 系統架構與技術堆疊 (Architecture)
+      * 前端展示層 (Client Side):
+      * 平台: GitHub Pages。
+      * 技術: HTML5, CSS3 (Materialize CSS), JavaScript (Vanilla ES6+)。
+      * 職責: 介面渲染、YouTube 嵌入、智慧型 Sticky (Mobile)、狀態管理 (Debounce)、本地日誌下載、API 通訊、狀態燈號判斷邏輯。
+      * 後端邏輯層 (Server Side):
+      * 平台: Google Apps Script (Web App)。
+      * 職責: 請求過濾 (Referer/API Key)、商業邏輯、併發鎖定 (LockService)、配額監控、權限分流。
+      * 資料儲存層 (Database):
+      * 平台: Google 試算表。
+      * 職責: 結構化資料儲存、歷史紀錄備份 (Snapshot)。
+________________
+
+
+2. UI/UX 設計規範 (Design Guidelines)
+      * 色彩系統 (Color Palette) - 溫暖且護眼:
+      * 主色 (Primary): 暖深棕色 (Warm Dark Brown, #3E2723) - 用於頂部導航列。
+      * 行動呼籲色 (CTA): 赤陶紅 (Terra Cotta, #D84315) - 用於重要按鈕 (登入、強制存檔)。
+      * 輔助色 (Secondary): 深琥珀色 (Dark Amber, #F57F17) - 用於圖示、選取狀態。
+      * 背景色: 暖乳白 (#FFF8E1) 網頁底色；純白 (#FFFFFF) 卡片底色。
+      * 狀態燈號:
+      * 🟢 Success (#2e7d32): 完稿 (分數完整 + 評語已填)。
+      * 🟡 Draft (#fbc02d): 暫存 (分數未完 或 評語未填)。
+      * ⚪ Empty: 未評。
+      * 🔴 Error (#c62828): 離線/錯誤。
+      * 版面佈局原則:
+      * 桌面版: 左右分欄 (Split Pane)。
+      * 行動版: 單欄流式佈局。智慧型 Sticky Top (輸入時自動收合)。
+________________
+
+
+3. 資料庫結構規劃 (Google 試算表)
+      1. System_Config: API_Key, Judge_Passwords, Last_Snapshot_Time.
+      2. Year_Config: 年度, 規準連結, 簡章連結, 系統鎖定狀態.
+      3. Teams: 年度, 類別, 組別, 作品資料, YouTube連結, Link_Note...
+      4. Scores:
+      * 欄位: 年度, 類別, 組別, 評審代號, 隊伍ID, 各項分數.
+      * 評語 (Comment): 必填 (邏輯定義上)，但在資料庫允許空值 (Empty String) 寫入。
+      * Session_ID: 用於偵測重複登入。
+      5. Final_Results: 總成績表。
+      6. [Hidden] Backup_Timestamp: 管理員執行快照時產生的備份表。
+________________
+
+
+4. 前端介面詳細規格 (Interface Specifications)
+A. 登入頁面 (Login Page)
+      * 版面配置:
+      1. 背景: 暖乳白搭配深棕色線條。
+      2. 卡片: 中央 400px 白色卡片。
+      * 內容元素:
+      1. Header: 標題「簡報達人擂台賽 評審系統」，深棕色字體。
+      2. Form:
+      * 類別選單 (Select): 「請選擇評審類別」。
+      * 身分選單 (Select): 評審 A/B/C。
+      * 密碼輸入框 (Input): Floating Label (聚焦變赤陶紅)，附眼睛圖示。
+      3. Action:
+      * 登入按鈕: 赤陶紅背景，白字。
+      4. Footer:
+      * 連結按鈕：「📌 系統使用說明與緊急聯絡」。
+      * 重複登入偵測: 登入時檢查 Session，若發現衝突，彈出警示。
+B. 評審評分介面 (Judge Interface)
+1. 頂部應用程式列 (App Bar)
+      * 樣式: 暖深棕色 (#3E2723) 背景，白色文字。
+      * 內容: 左側顯示類別與評審代號；右側顯示規準、簡章、教學、登出按鈕。
+2. 左側隊伍導航 (Sidebar) - 狀態邏輯更新
+      * 結構: 分為「▼ 國小組」與「▼ 國中組」。
+      * 列表狀態燈號邏輯 (關鍵更新):
+      * ⚪ 未評 (Empty): 所有分數為 0 且 評語為空。
+      * 🟡 暫存 (Draft):
+      * 狀況 A：分數已填，但評語空白 (評審覺得累，先存分數)。
+      * 狀況 B：評語已填，但分數未填完。
+      * 🟢 完稿 (Completed): 四項分數皆 > 0 且 評語不為空。
+      * 選取樣式: 背景淺琥珀色，左側赤陶紅飾條。
+3. 右側主要工作區 (Main Content)
+      * 樣式: 米白底色 (#FAFAFA)。
+      * 卡片一：作品播放區 (Smart Sticky on Mobile)
+      * 樣式: 行動版預設吸附置頂；點擊輸入框時自動收合為 Mini Bar。
+      * 內容: YouTube 嵌入播放器、外部連結按鈕 (深琥珀色邊框)。
+      * 卡片二：評分滑桿區 (Scoring)
+      * 互動: 滑桿 + ➖/➕ 微調按鈕 + 數字輸入框 (三者連動)。
+      * 配色: 深棕色按鈕，赤陶紅滑桿。
+      * 卡片三：質性評量 (Feedback) - [邏輯修正：允許空值存檔]
+      * 特色推薦: 下拉選單。
+      * 評語 (Textarea):
+      * 標籤: 「請輸入評語 (必填) *」。
+      * 存檔行為:
+      * 若評語為空，使用者點擊存檔 -> 允許存檔。
+      * 系統回饋：Snackbar 顯示「✅ 已暫存 (評語尚未填寫)」，且左側列表燈號維持 黃燈 🟡。
+      * 只有當評語填寫完成後，列表燈號才會轉為 綠燈 🟢。
+      * 提示文字: 輸入框下方用小字 (Helper Text) 提示：「需填寫評語，該隊伍才會標示為『已完成』」。
+      * 底部存檔區 (Bottom Actions)
+      * 左側: 📥 下載本機紀錄 (CSV 備份)。
+      * 右側 FAB: 赤陶紅 save 按鈕。點擊後觸發 API 寫入，無論評語是否空白皆可寫入。
+C. 後台管理介面 (Admin Dashboard)
+      * 導航: Tab Bar，選取底線為赤陶紅。
+頁籤 1: 系統設定 (Settings)
+      * API 設定、年度設定、系統鎖定。
+頁籤 2: 隊伍管理 (Teams)
+      * 快照: 📸 建立系統快照 (深棕色按鈕)。
+      * 匯入: 支援追加/更新/覆蓋 (含防呆確認碼)。
+頁籤 3: 評分進度 (Progress) - [顯示邏輯配合更新]
+      * 儀表板: 顯示三大類別。
+      * 進度計算邏輯:
+      * 分子：狀態為 🟢 完稿 的隊伍數。
+      * 分母：該類別總隊伍數。
+      * 註：若評審只存了分數沒寫評語 (🟡)，在進度條上不算完成。這能讓管理員知道還有多少「半成品」。
+頁籤 4: 成績結算 (Results)
+      * 防呆提示:
+      * 若管理員按下 🔄 重新計算 時，發現有隊伍處於 🟡 暫存狀態 (有分無評語)，系統需彈出 Dialog 警告：「尚有隊伍未填寫評語，是否仍要計算排名？」。
+      * 功能: 建立成績快照、鎖定成績、下拉決選獎項。
+頁籤 5: 輸出與寄信 (Output)
+      * 配額顯示、列印、寄信。
+________________
+
+
+5. 後端 API 功能規格 (Backend Specifications)
+A. 安全性與限制
+      1. Referer Check: 限 GitHub Pages。
+      2. API Key: 強制驗證。
+      3. 權限: 快照僅限 Admin。
+B. 核心邏輯
+      1. submitScore (存檔 API):
+      * 驗證修正: 移除 對評語 (Comment) 的非空檢查。允許接收空字串。
+      * 鎖定: LockService 保護。
+      * 邏輯: 只要 API Key 正確且分數數值合法，即寫入資料庫。不判斷是否「完稿」，由前端自行判斷狀態燈號。
+      2. createSnapshot: 僅限管理員。
+      3. login: 回傳類別隊伍資料。
+________________
+
+
+6. 非功能性需求 (Non-Functional Requirements)
+      1. 離線保護: 斷線時寫入 LocalStorage，介面轉紅。
+      2. 防抖 (Debounce): 停止操作 3 秒後自動存檔。
+      3. 行動版優化: 輸入時自動收合影片。
+________________
+
+
+7. 交付項目 (Deliverables)
+      1. Frontend Package:
+      * js/app.js: 包含新的狀態判斷邏輯 (Green if scores>0 && comment not empty)。
+      * HTML/CSS: 暖色系 Material Design。
+      2. Backend Script: Code.gs (移除評語必填檢核)。
+      3. Database Template: Google Sheet。
+      4. Documentation:
+      * 部署 SOP。
+      * 使用者手冊 (特別說明：評語沒寫完也可以先存檔，但燈號會亮黃燈)。
+________________
+
+
+確認狀態：
+v21.0 已完美解決了「評審不想因為評語卡住存檔」的痛點，同時透過前端的燈號邏輯（黃燈/綠燈）與後台的警告機制，確保最終資料的完整性。這是一份兼顧人性化操作與行政流程管控的規格書。
+
+
+v16
+這是一份集大成、細節最完整的 v16.0 需求規格說明書。
+此版本整合了「居家線上評審」、「嵌入式 YouTube 播放」、「極簡登入流程」、「前後端分離架構」以及「最高規格的資料安全機制」。
+________________
+
+
+簡報達人擂台賽評審評分系統
+軟體需求規格說明書 (Software Requirements Specification)
+版本： v16.0 (Ultimate Online Edition)
+適用情境： 居家線上評審（Remote Grading）
+核心架構： 前後端分離 (GitHub Pages + GAS API + Google Sheets)
+________________
+
+
+1. 系統架構定義 (System Architecture)
+      * 前端層 (Client Side):
+      * 平台： 靜態網頁 (部署於 GitHub Pages)。
+      * 技術： HTML5, CSS3 (Material Design), JavaScript (ES6+)。
+      * 職責： 負責畫面渲染、YouTube 嵌入播放、離線暫存邏輯、與 API 通訊。
+      * 應用層 (Backend API):
+      * 平台： Google Apps Script (部署為 Web App)。
+      * 權限： 執行身分「我 (Me)」，存取權限「任何人 (Anyone)」。
+      * 職責： 驗證 API Key、處理商業邏輯、防止併發寫入 (LockService)、資料驗證。
+      * 資料層 (Database):
+      * 平台： Google 試算表 (Google Sheets)。
+      * 職責： 純粹儲存數據，不包含程式碼。
+________________
+
+
+2. UI/UX 設計規範 (Material Design)
+      * 視覺風格： 採用 Google Material Design 規範。
+      * 主色調： 專業深藍色 (Deep Blue) 搭配白色卡片。
+      * 字體： Noto Sans TC (繁體黑體)，確保閱讀舒適。
+      * 版面佈局： 左右分欄 (Split Pane) 設計。
+      * 左側：導航列表 (List)。
+      * 右側：工作內容區 (Content)。
+      * 互動回饋：
+      * Snackbars： 底部浮動黑條提示狀態 (如：✅ 已自動存檔)。
+      * Dialogs： 說明文件與確認視窗使用模態對話框。
+      * Loading： 資料載入或登入時顯示圓形轉圈動畫。
+________________
+
+
+3. 資料庫結構規劃 (Google 試算表)
+所有資料存於單一試算表，透過「年度」欄位區分。
+      1. System_Config (系統全域設定)
+      * API_Key：通訊金鑰 (自訂字串，用於前端與後端握手驗證)。
+      * Admin_Password：後台管理員登入密碼。
+      2. Year_Config (年度設定)
+      * 欄位：年度、是否為當前年度、評分規準連結、競賽簡章連結、系統鎖定狀態 (True/False)。
+      3. Teams (隊伍資料)
+      * 欄位：年度、組別、作品名稱、作品說明、學校、學生姓名、學生Email、指導教師、教師Email、教師電話、YouTube 影片網址、簡報網址、心智圖網址、同意書網址、郵件寄送狀態。
+      4. Scores (評分數據)
+      * 欄位：年度、組別、評審代號 (JudgeA/B/C)、隊伍ID、內容得分(40%)、表達得分(30%)、臺風得分(20%)、技巧得分(10%)、總分、評語、特色推薦獎項。
+      5. Final_Results (總成績表)
+      * 欄位：年度、組別、隊伍ID、平均分、排名、最終特色獎、最終優選獎。
+________________
+
+
+4. 前端網頁功能與介面細節 (Interface & Features)
+A. 登入頁面 (Login Page) - 極簡防呆設計
+      * 版面： 螢幕中央顯示白色 Material Card。
+      * 輸入流程 (無須輸入帳號)：
+      * 組別選擇 (Dropdown)： 下拉選單顯示「管理員後台」及「六大參賽組別」。
+      * 身分選擇 (Dropdown)：
+      * 當選擇組別後自動出現。
+      * 選項：評審 A、評審 B、評審 C。
+      * 密碼輸入 (Input)：
+      * 輸入框右側具備 👁️ 顯示/隱藏密碼按鈕。
+      * 若密碼為純數字，手機端自動彈出數字鍵盤。
+      * 輔助功能：
+      * 登入按鈕下方顯示「📌 系統使用說明」按鈕，點擊彈出 Dialog。
+B. 評審評分介面 (Judge Interface) - 核心工作區
+佈局： 左側側邊欄 (寬度固定 300px) + 右側主要工作區 (自適應寬度)。
+1. 頂部應用程式列 (Top App Bar)
+      * 左側標題：顯示「組別名稱」與「評審代號」。
+      * 右側工具列：
+      * 📖 評分規準 (開新視窗)。
+      * 📋 競賽簡章 (開新視窗)。
+      * ℹ️ 操作教學 (彈出 Dialog 說明滑桿與存檔機制)。
+      * 🚪 登出。
+2. 左側隊伍清單 (Sidebar List)
+      * 列表項目： 每一列代表一支隊伍。
+      * 狀態圖示 (左)：
+      * ⚪ (灰空心)：未評分。
+      * 🟡 (黃實心)：暫存/評分中。
+      * 🟢 (綠勾勾)：已完成 (四項分數皆有值)。
+      * 文字內容： 顯示「學校名稱」與「作品名稱(截斷)」。
+      * 互動： 點擊項目後，右側內容區更新為該隊資料，並將該項目標示為「選取狀態 (Highlight)」。
+3. 右側評分工作區 (Main Content) - 混合嵌入模式
+此區域需支援獨立捲軸 (Scrollable)。
+      * 區塊 1：作品資訊與影片 (Video Section)
+      * 標題卡片： 顯示完整作品名稱、學校、學生姓名。
+      * 摺疊說明： 「作品說明」預設顯示 2 行，點擊可展開閱讀全文。
+      * YouTube 嵌入播放器 (Embedded Player)：
+      * 程式自動解析 YouTube 網址 (支援 youtu.be, watch?v=, shorts)。
+      * 顯示 16:9 的 iframe 播放器，評審可直接點擊播放、暫停、調整音量。
+      * 外部連結按鈕群 (External Links)：
+      * 位於播放器下方，提供備用開啟方式。
+      * 按鈕 1：📺 在 YouTube 開啟 (防範影片禁止嵌入或需全螢幕觀看)。
+      * 按鈕 2：📊 簡報檔案 (開新視窗)。
+      * 按鈕 3：🧠 心智圖 (開新視窗)。
+      * 按鈕 4：📄 同意書 (開新視窗)。
+      * 區塊 2：評分滑桿區 (Scoring Sliders)
+      * 評審邊看上方影片，邊操作此區。
+      * 四組滑桿元件：
+      * 標籤：例如「內容 (40%)」。
+      * 滑桿 (Range Input)： 範圍 0~5，步進值 0.1。
+      * 即時回饋： 滑桿右側顯示「等級: 4.2」及「換算得分: 33.6」。
+      * 總分儀表板： 區域底部用大字體顯示 目前總分：85.4。
+      * 區塊 3：質性評量 (Feedback)
+      * 特色推薦 (Dropdown)： 選項 [未選擇, 探究之星, 創意之星, 學習之星]。
+      * 評語 (Textarea)： 必填欄位，支援多行輸入，具備浮動標籤 (Floating Label)。
+      * 區塊 4：存檔操作
+      * 自動存檔： 前端每 60 秒靜默呼叫 API 存檔。
+      * 手動存檔鈕 (FAB)： 右下角懸浮 💾 按鈕，點擊強制存檔並顯示成功提示。
+4. 離線保護機制 (Offline Protection)
+      * 偵測 navigator.onLine 狀態。
+      * 斷線時： 頂部顯示紅色警示條，將輸入資料寫入 LocalStorage。
+      * 復連時： 頂部顯示綠色提示條，自動讀取 LocalStorage 並補傳至後端。
+C. 後台管理介面 (Admin Dashboard)
+採用 頁籤 (Tabs) 切換功能。
+      1. 系統設定 (Settings)：
+      * API 連線： 輸入 API URL 與 API Key (附摺疊式教學面板)。
+      * 年度資料： 設定年度、規準連結、簡章連結。
+      2. 隊伍管理 (Teams)：
+      * 匯入功能： 按鈕點擊後彈出 Dialog，支援「上傳 CSV」或「輸入 Google Sheet 連結」。
+      * 列表管理： 表格顯示隊伍，支援編輯與刪除。
+      3. 評分進度 (Progress)：
+      * 儀表板： 顯示六大組別卡片。
+      * 進度條： 每個卡片內顯示 評審 A/B/C 的完成百分比 (例如：80% - 8/10)。
+      4. 成績結算 (Results)：
+      * 控制區： 🔄 重新計算、🔒 鎖定成績 (鎖定後評審端變唯讀)。
+      * 總表： 顯示排名、平均分。
+      * 決選： 下拉選單決定「最終特色獎」與「最終優選獎」，按鈕儲存。
+      5. 輸出與寄信 (Output)：
+      * 列印： 勾選特優/優等 -> 產生 A4 匿名評語表 (提示開啟背景圖形列印)。
+      * 寄信： 顯示寄送狀態 (已寄/未寄)，支援群發與測試信。
+________________
+
+
+5. 後端 API 功能細節 (Google Apps Script)
+      * 安全性 (Security)：
+      * Middleware： 所有請求先經過 validateApiKey() 檢查。
+      * Server-side Validation： 檢查 submitScore 的分數是否超出權重上限 (防篡改)。
+      * 併發控制 (Concurrency)：
+      * 使用 LockService.getScriptLock() 包覆寫入邏輯，等待時間 30 秒，防止多評審同時寫入同一儲存格導致錯誤。
+      * API 端點 (Endpoints)：
+      * doPost(e): 路由處理 login, submitScore, importData, sendMail。
+      * doGet(e): 路由處理 getData, getResults。
+________________
+
+
+6. 交付文件與部署流程 (Deliverables)
+      1. 前端程式碼包 (Frontend Package)：
+      * index.html (單頁應用程式結構)。
+      * css/style.css (包含 Materialize 框架與自訂樣式)。
+      * js/app.js (核心邏輯、YouTube API 串接、離線處理)。
+      * js/config.js (API URL 設定檔)。
+      2. 後端程式碼 (Backend Script)：
+      * Code.gs (API 路由與邏輯)。
+      * Database.gs (試算表讀寫)。
+      * Mailer.gs (郵件處理)。
+      3. 資料庫範本 (DB Template)：
+      * Google Sheet 連結，預設好所有工作表與欄位。
+      4. 部署手冊 (Deployment SOP)：
+      * [PDF] 如何建立 GAS 專案並發布為 Web App。
+      * [PDF] 如何設定 GitHub Pages。
+      * [PDF] 如何取得 YouTube 影片 ID 並填入試算表。
+________________
+
+
+規格確認：
+本規格書 v16.0 已完整納入 「居家線上評審嵌入播放」 與 「極簡登入」 需求，並詳述了前後端分離架構下的每一個按鈕與介面細節。
+是否可以開始依照此規格進行開發？
+
+
+v13
+簡報達人擂台賽評審評分系統
+軟體需求規格說明書 (Software Requirements Specification)
+版本： v13.0 (Final Release)
+架構模式： 前後端分離 (Decoupled Architecture)
+________________
+1. 系統架構定義 (System Architecture)
+本系統採用 三層式架構，以確保安全性、靈活性與長期維護的便利性。
+      * 前端層 (Client Side):
+      * 平台： 靜態網頁 (託管於 GitHub Pages 或任何靜態主機)。
+      * 技術： HTML5, CSS3 (Material Design), JavaScript (ES6+)。
+      * 職責： 負責使用者介面呈現、互動邏輯、離線暫存、API 呼叫。
+      * 應用層 (Backend API):
+      * 平台： Google Apps Script (部署為 Web App)。
+      * 職責： 提供 RESTful API 介面 (JSON)，處理商業邏輯、權限驗證、併發鎖定 (LockService)、數據驗證。
+      * 資料層 (Database):
+      * 平台： Google 試算表 (Google Sheets)。
+      * 職責： 純粹儲存數據，不包含程式碼。
+________________
+2. UI/UX 設計規範 (Material Design)
+      * 視覺風格： 採用 Material Design 規範（卡片式設計、陰影層次、圓角）。
+      * 互動回饋：
+      * 按鈕： 具備漣漪效果 (Ripple Effect)。
+      * 通知： 使用 Snackbars (底部浮動黑條) 取代彈出視窗，提示「存檔成功」或「離線模式」。
+      * 讀取中： 使用圓形轉圈 (Spinner) 或頂部進度條 (Linear Progress) 表示資料傳輸中。
+      * 內建引導系統 (On-screen Help):
+      * Help Icon： 在功能區配置 ? 或 i 圖示，點擊開啟對話框 (Dialog) 說明。
+      * Tooltips： 滑鼠懸停顯示功能短語（如：CSV 匯入格式提示）。
+      * Expansion Panels： 後台複雜設定（如 API 串接教學）採用可摺疊面板，預設收合。
+________________
+3. 資料庫結構規劃 (Google 試算表)
+資料表設計為單一檔案，透過「年度」欄位區分資料，無需每年建立新檔。
+      1. System_Config (系統全域設定)
+      * API_Key：通訊金鑰 (自訂密碼，用於前後端握手驗證)。
+      * Admin_Password：後台管理員登入密碼。
+      2. Year_Config (年度設定)
+      * 欄位：年度、當前年度開關、評分規準連結、競賽簡章連結、系統鎖定狀態。
+      3. Teams (隊伍資料)
+      * 欄位：年度、組別、作品名稱、學校、學生(含Email)、教師(含Email)、各項作品連結、郵件寄送狀態。
+      4. Scores (評分數據)
+      * 欄位：年度、組別、評審ID、四項分數、總分、評語、特色推薦獎項。
+      5. Final_Results (總成績表)
+      * 欄位：年度、組別、平均分、排名、最終特色獎、最終優選獎。
+________________
+4. 後端 API 功能需求 (Google Apps Script)
+GAS 專案需部署為「執行身分為：我 (Me)」、「存取權限：任何人 (Anyone)」，並具備以下機制：
+A. 安全與穩定性核心
+      * API Key 驗證： 所有請求必須夾帶 API_Key，否則回傳 401 Unauthorized。
+      * 伺服器端驗證 (Validation)： 接收分數時，後端需再次檢查數值是否在合法範圍 (例如內容 <= 40)，防止惡意竄改。
+      * 併發鎖定 (LockService)： 在寫入 Scores 與 Teams 表時使用互斥鎖，防止多位評審同時送出導致資料覆蓋。
+      * CORS 支援： 允許前端網域的跨來源資源共用。
+B. API 端點 (Endpoints)
+      * doGet() / doPost()：路由分發器。
+      * login：驗證評審/管理員密碼。
+      * getData：取得當年度隊伍、規準連結、系統狀態。
+      * submitScore：寫入評分數據。
+      * importData：匯入 CSV 或外部試算表資料。
+      * getResults / saveResults：計算與儲存總成績。
+      * sendMail：執行郵件寄送。
+________________
+5. 前端網頁功能需求 (GitHub Pages)
+A. 登入頁面 (Login)
+      * 介面： Material Card 置中設計。
+      * 引導： 底部提供「📌 系統使用說明」按鈕，彈出建議瀏覽器與緊急聯絡資訊。
+B. 評審評分介面 (Judge Interface)
+      * 資訊區：
+      * 導覽列顯示評審姓名與組別。
+      * 快捷按鈕： 「📖 評分規準」、「📋 競賽簡章」 (動態讀取後台連結)。
+      * 操作引導： 首次登入或點擊 ? 顯示評分教學 (滑桿操作、自動存檔說明)。
+      * 隊伍列表 (左側/手機版第一層)：
+      * 顯示隊伍清單與狀態燈號 (✅ 已完成 / 🟡 暫存 / ⚪ 未評)。
+      * 評分區 (右側/手機版第二層)：
+      * 五等級滑桿： 0~5 等級 (支援小數點)，前端即時換算權重分數。
+      * 即時總分： 隨滑桿滑動即時變動。
+      * 資料保全 (雙重機制)：
+      1. 自動存檔： 每 1 分鐘背景上傳。
+      2. 離線保護 (Local Storage)： 網路斷線時，資料暫存於瀏覽器，並顯示紅色狀態條；網路恢復後自動補傳。
+C. 後台管理介面 (Admin Dashboard)
+      * 系統設定與教學：
+      * API 設定引導： 使用摺疊面板詳細教學如何取得與設定 API URL。
+      * 年度與連結： 設定比賽年度、規準與簡章網址。
+      * 資料管理：
+      * 匯入功能： 支援 CSV 上傳與外部試算表連結匯入 (附 Tooltip 說明格式)。
+      * 隊伍 CRUD： 新增、修改、刪除隊伍。
+      * 現場控管：
+      * 進度儀表板： 進度條顯示各組評審完成度。
+      * 系統鎖定： 一鍵開關，鎖定後評審端轉為唯讀。
+      * 成績結算：
+      * 列表： 自動計算平均、排名 (同分並列)。
+      * 決選： 顯示評審推薦獎項，管理員下拉決定最終獎項。
+      * 輸出功能：
+      * 列印： 點擊列印前提示「請勾選背景圖形」，輸出 A4 匿名評語表。
+      * 寄信： 顯示寄送進度與狀態，防止重複寄送。
+________________
+6. 交付文件與部署包 (Deliverables)
+開發完成後，將交付以下內容供主辦方部署：
+      1. 前端程式碼包 (GitHub Ready)：
+      * index.html, css/style.css, js/app.js, js/config.js。
+      * 包含所有 Material Design 元件與說明文字。
+      2. 後端程式碼 (GAS Script)：
+      * .gs 檔案完整程式碼。
+      3. 資料庫範本 (Google Sheet)：
+      * 預設好欄位名稱的空白試算表。
+      4. 部署標準作業程序 (SOP)：
+      * 圖文教學：如何建立 GAS 專案、如何設定 GitHub Pages、如何串接 API Key。
+________________
+確認： 本規格書 v13.0 已完整包含所有需求細節，開發團隊將依此進行程式碼撰寫。
+v24
+這是一份臻至完美的 v24.0 需求規格說明書。
+此版本根據最後的專家建議，補上了 「災難復原的閉環 (Import Offline CSV)」、「資料熱更新 (Hot-Reload)」 以及 「行動版防誤觸細節」。這確保了系統不僅在順利時好用，在遇到網路災難或資料臨時變更時，依然能保有強大的韌性與操作彈性。
+________________
+
+
+簡報達人擂台賽評審評分系統
+軟體需求規格說明書 (Software Requirements Specification)
+版本： v24.0 (The Hot-Reload & Closed Loop Edition)
+專案代號： PresentationMaster-Online
+適用情境： 居家線上評審 (Remote Grading)
+評審架構： 3 類別 x 3 評審 (每人評該類別之國中/國小組)
+視覺風格： 暖色系 - 專業沉穩版 (Warm Professional)
+________________
+
+
+1. 系統架構與技術堆疊 (Architecture)
+      * 前端展示層 (Client Side):
+      * 平台: GitHub Pages (靜態網頁託管)。
+      * 技術: HTML5, CSS3 (Materialize CSS), JavaScript (Vanilla ES6+)。
+      * 職責: 介面渲染、YouTube 嵌入、智慧型 Sticky (含Scroll還原)、狀態管理 (Debounce)、熱更新資料 (Hot-Reload)、API 通訊。
+      * 後端邏輯層 (Server Side):
+      * 平台: Google Apps Script (部署為 Web App)。
+      * 執行權限: 執行身分「我 (Me)」，存取權限「任何人 (Anyone)」。
+      * 職責: 請求過濾 (Referer/API Key)、商業邏輯、併發鎖定 (LockService)、配額監控、權限分流、CSV 解析 (災難復原)。
+      * 資料儲存層 (Database):
+      * 平台: Google 試算表 (Google Sheets)。
+      * 隱私模型: 私有 (Private)。
+      * 職責: 結構化資料儲存、歷史紀錄備份 (Snapshot)。
+________________
+
+
+2. UI/UX 設計規範 (Design Guidelines)
+      * 色彩系統 (Color Palette) - 溫暖且高對比:
+      * 主色 (Primary): 暖深棕色 (Warm Dark Brown, #3E2723) - 用於頂部導航列。
+      * 行動呼籲色 (CTA): 赤陶紅 (Terra Cotta, #D84315) - 用於登入、強制存檔、展開按鈕。
+      * 輔助色 (Secondary): 深琥珀色 (Dark Amber, #F57F17) - 用於圖示、選取狀態。
+      * 背景色: 暖乳白 (#FFF8E1) 網頁底色；純白 (#FFFFFF) 卡片底色。
+      * 狀態識別 (Status Identification) - [雙重編碼]:
+      * 🟢 完稿: 顏色 #2e7d32 + 圖示 check_circle (實心打勾)。
+      * 🟡 暫存: 顏色 #fbc02d + 圖示 edit (鉛筆)。
+      * ⚪ 未評: 顏色 Gray + 圖示 radio_button_unchecked (空心圓)。
+      * 🔴 錯誤: 顏色 #c62828 + 圖示 error (驚嘆號)。
+      * 版面佈局原則:
+      * 桌面版: 左右分欄 (Split Pane)。
+      * 行動版: 單欄流式佈局 + 防誤觸智慧 Sticky Mini Bar。
+________________
+
+
+3. 資料庫結構規劃 (Google 試算表)
+注意：此表為「廚房」，僅系統擁有者有權限進入。
+      1. System_Config (系統設定):
+      * API_Key, Admin_Password, Judge_Passwords (JSON), Last_Snapshot_Time.
+      2. Year_Config (年度設定):
+      * 年度, 規準連結, 簡章連結, 系統鎖定狀態, Category_Definitions.
+      3. Teams (隊伍資料):
+      * 年度, 類別, 組別, 作品資料, YouTube連結, Link_Note...
+      4. Scores (評分數據):
+      * 欄位: 年度, 類別, 組別, 評審代號, 隊伍ID, 各項分數, 評語 (允許空值), Session_ID.
+      5. Final_Results (總成績表): 總成績、排名、獎項。
+      6. [Hidden] Backup_Timestamp: 快照備份表。
+________________
+
+
+4. 前端介面詳細規格 (Interface Specifications)
+A. 登入頁面 (Login Page)
+      * 版面: 暖乳白背景，中央白色 Material Card (400px)。
+      * Form:
+      * 類別選單 (含管理員)、身分選單 (評審A/B/C)、密碼輸入框 (Floating Label + Toggle Visibility)。
+      * Action: 登入按鈕 (赤陶紅)。
+      * Footer: 說明與緊急聯絡連結。
+B. 評審評分介面 (Judge Interface)
+1. 頂部應用程式列 (App Bar)
+      * 樣式: 暖深棕色 背景，白色文字。
+      * 左側: 「類別名稱」 + 「評審代號」。
+      * 右側功能圖示:
+      * refresh (重新整理資料 / Reload Data) [新增功能]:
+      * 邏輯: 點擊後，不登出、不清除本地暫存分數 (Drafts)。僅呼叫 API 重新抓取最新的「隊伍清單」與「影片連結」。
+      * 場景: 用於比賽中途連結修正，評審無需重新登入即可看到正確影片。
+      * menu_book (規準)、description (簡章)、help_outline (教學)、exit_to_app (登出)。
+2. 左側隊伍導航 (Sidebar) - [雙重編碼]
+      * 結構: 分為「▼ 國小組」與「▼ 國中組」。
+      * 列表: 狀態圖示 (綠勾/黃筆/灰圓) + 學校名稱 + 作品名稱。
+3. 右側主要工作區 (Main Content)
+      * 卡片一：作品播放區 (Anti-Mis-touch Sticky)
+      * 正常模式: 完整 YouTube Player (iframe) + 連結按鈕。
+      * Mini Bar 模式 (當輸入框 Focus 時):
+      * 樣式: 頂部 60px 高 Sticky Bar，Z-Index 高於虛擬鍵盤。
+      * 左側: ▶️ 控制與時間碼。
+      * 右側: 🔽 展開 (Expand) 按鈕 [優化]:
+      * 尺寸: 至少 44x44px 觸控熱區，置於最右緣，防止誤觸播放條。
+      * 行為: 點擊後 -> (1) 收起鍵盤 (Blur Input) -> (2) 還原卡片尺寸 -> (3) Scroll To Top (頁面捲動至該卡片頂部，確保影片居中)。
+      * 連結列: 若後台有 Link_Note，按鈕顯示警告。
+      * 卡片二：評分滑桿區 (Scoring)
+      * 互動: 滑桿 + ➖/➕ 微調 + 數字輸入框。
+      * 配色: 深棕色按鈕，赤陶紅滑桿。
+      * 卡片三：質性評量 (Feedback)
+      * 特色推薦: 下拉選單。
+      * 評語 (Textarea): 標籤「請輸入評語 (必填) *」。未填時提示「需填寫評語以標示完稿」。
+      * 底部存檔區 & 訊息回饋
+      * Action: 右側 FAB save 按鈕 (赤陶紅)。
+      * Snackbar: 顯示暫存/完稿/離線狀態。
+      * 左側: 📥 下載本機紀錄 (CSV 備份)。
+C. 後台管理介面 (Admin Dashboard)
+頁籤 1: 系統設定 (Settings)
+      * API 設定 (含教學)、年度設定、系統鎖定。
+頁籤 2: 隊伍管理 (Teams)
+      * 快照、匯入 (含防呆)、連結備註編輯。
+頁籤 3: 評分進度 (Progress) - [堆疊圖表]
+      * 堆疊長條圖: 綠(完稿) / 黃(評分中) / 灰(未開始)。
+      * Tooltip: 顯示滯留於黃色狀態的評審與數量。
+頁籤 4: 成績結算 (Results)
+      * 工具列:
+      * 🔄 重新計算。
+      * 📤 匯入評審離線評分 (Import Offline CSV) [新增功能]:
+      * 邏輯: 點擊後彈出上傳框，選擇評審端下載的 CSV 檔案。前端解析 CSV 後，呼叫 API 批次寫入 Scores 資料表。
+      * 場景: 災難復原的最後一哩路。當 API 全面失靈，評審手邊只有 CSV 時，管理員可藉此手動彙整成績。
+      * 📸 建立成績快照。
+      * 🔒 鎖定成績。
+頁籤 5: 輸出與寄信 (Output)
+      * 配額顯示、列印、寄信。
+________________
+
+
+5. 後端 API 功能規格 (Backend Specifications)
+A. 安全性與限制 (Security)
+      1. Referer Check: 強制檢查 Header，拒絕非 GitHub Pages 請求。
+      2. API Key: 強制驗證。
+      3. 權限分流: createSnapshot 僅限 Admin。
+      4. 隱私保護: 試算表 Private，僅 Service Account 可寫入。
+B. 核心邏輯
+      1. submitScore: 接收評分 (允許空評語)，LockService 防衝突。
+      2. importJudgeCSV [新增 API]:
+      * 接收管理員上傳的 JSON/CSV Array。
+      * 批次寫入 Scores 表 (需驗證管理員權限)。
+      3. getData: 回傳隊伍資料 (支援 Hot-Reload 呼叫)。
+      4. createSnapshot: 複製隱藏工作表。
+      5. login: 回傳類別隊伍資料。
+________________
+
+
+6. 非功能性需求 (Non-Functional Requirements)
+      1. Accessibility: 顏色對比符合 WCAG AA，雙重編碼 (Icon+Color)。
+      2. RWD: 智慧 Sticky Mini Bar (含 Scroll To Top 優化)。
+      3. Resilience: 前端 Debounce，後端 CSV 災難復原匯入。
+________________
+
+
+7. 交付項目 (Deliverables)
+      1. Frontend Package:
+      * js/app.js: 含 Hot-Reload 邏輯、CSV Parser、Mini Bar Scroll 邏輯。
+      * HTML/CSS: 暖色系 Material Design。
+      2. Backend Script: Code.gs (含 importJudgeCSV 邏輯)。
+      3. Database Template: Google Sheet 預設結構。
+      4. Documentation:
+      * Day 0 部署手冊: 含密碼設定。
+      * 使用者手冊: 含「如何使用重新整理按鈕」與「行動版展開技巧」。
+      * 災難復原手冊: 詳細說明「評審如何下載 CSV」以及「管理員如何匯入 CSV」。
+________________
+
+
+最終確認狀態：
+v24.0 已將所有使用者體驗的斷點（連結更新、誤觸、災難資料回寫）全部補上。這是一份具備高容錯性與高操作彈性的最終規格書，完全可以交付開發。
