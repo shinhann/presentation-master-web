@@ -87,6 +87,14 @@ window.App = function() {
           >
             <span className="material-icons text-base mr-1">assessment</span>成績總表與匯出
           </button>
+          <button
+            onClick={() => setAdminTab('health')}
+            className={`py-3 text-xs font-bold border-b-2 flex items-center transition ${
+              adminTab === 'health' ? 'border-amber-900 text-amber-900' : 'border-transparent text-gray-500 hover:text-gray-800'
+            }`}
+          >
+            <span className="material-icons text-base mr-1">health_and_safety</span>系統維運/檢測
+          </button>
         </div>
       </div>
 
@@ -96,6 +104,7 @@ window.App = function() {
         {adminTab === 'judges' && <window.AdminJudgesView />}
         {adminTab === 'config' && <window.AdminConfigView />}
         {adminTab === 'results' && <window.AdminResultsView />}
+        {adminTab === 'health' && <window.AdminHealthView />}
       </main>
     </div>
   );

@@ -53,13 +53,19 @@ function handleRequest(payload) {
     case 'getJudgeList':
       return processGetJudgeList(ss);
 
-    // System Config & Year (Service_Config.js)
+    // System Config & Year & Health (Service_Config.js)
     case 'getSystemConfig':
       return processGetSystemConfig(ss, payload);
     case 'saveSystemConfig':
       return processSaveSystemConfig(ss, payload);
     case 'copyYearData':
       return processCopyYearData(ss, payload);
+    case 'checkSystemHealth':
+      return processCheckSystemHealth(ss, payload);
+    case 'createSnapshot':
+      return processCreateSnapshot(ss, payload);
+    case 'exportBackup':
+      return processExportBackup(ss, payload);
 
     // Judge Management (Service_Judges.js)
     case 'getAllJudges':

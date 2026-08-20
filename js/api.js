@@ -104,5 +104,20 @@ window.ApiService = {
   // 11. 提交評分數據
   async submitScore(scoreData) {
     return this.request('submitScore', scoreData);
+  },
+
+  // 12. 系統完整性一鍵診斷
+  async checkSystemHealth(year) {
+    return this.request('checkSystemHealth', { year: year || window.APP_CONFIG.CURRENT_YEAR });
+  },
+
+  // 13. 建立時間點快照
+  async createSnapshot(note) {
+    return this.request('createSnapshot', { note: note || '管理員手動快照' });
+  },
+
+  // 14. 打包下載本機備份
+  async exportBackup(year) {
+    return this.request('exportBackup', { year: year || window.APP_CONFIG.CURRENT_YEAR });
   }
 };
