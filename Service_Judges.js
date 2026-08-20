@@ -10,43 +10,57 @@ function processGetAllJudges(ss, payload) {
   const lastRow = judgeSheet.getLastRow();
   if (lastRow < 2) return { status: 'success', data: [] };
 
+  const reqYear = String(payload.year || payload.competition_year || 115);
   const values = judgeSheet.getRange(2, 1, lastRow - 1, 5).getValues();
-  const judges = values.map(row => ({
-    competition_year: row[0],
-    judge_code: String(row[1]),
-    Judge_Code: String(row[1]),
-    judge_name: row[2],
-    Judge_Name: row[2],
-    login_password: String(row[3]),
-    Login_Password: String(row[3]),
-    category_short: row[4],
-    Category_Short: row[4]
-  }));
+  
+  // 依照年度過濾評審資料
+  const judges = values
+    .filter(row => String(row[0]) === reqYear)
+    .map(row => ({
+      competition_year: row[0],
+      judge_code: String(row[1]),
+      Judge_Code: String(row[1]),
+      judge_name: row[2],
+      Judge_Name: row[2],
+      login_password: String(row[3]),
+      Login_Password: String(row[3]),
+      category_short: row[4],
+      Category_Short: row[4]
+    }));
 
   return { status: 'success', data: judges };
 }
 
 function processSaveJudge(ss, payload) {
-  const judge = payload.judge;
-  if (!judge) return { status: 'error', message: 'Missing judge payload', data: null };
+  const judge = payload.judge || {};
+  const targetYear = String(judge.competition_year || judge.Competition_Year || payload.competition_year || payload.year || 115);
+  const targetCode = String(judge.judge_code || judge.Judge_Code || '');
+  const judgeName = judge.judge_name || judge.Judge_Name || '';
+  const loginPassword = String(judge.login_password || judge.Login_Password || '');
+  const categoryShort = judge.category_short || judge.Category_Short || '';
+
+  if (!targetCode) {
+    return { status: 'error', message: 'Missing judge_code', data: null };
+  }
 
   const judgeSheet = ss.getSheetByName('Judge_Setup');
-  const lastRow = judgeSheet.getLastRow();
-  const targetCode = String(judge.judge_code);
+  if (!judgeSheet) return { status: 'error', message: 'Judge_Setup sheet not found', data: null };
 
+  const lastRow = judgeSheet.getLastRow();
   let rowIndex = -1;
+
   if (lastRow > 1) {
-    const codes = judgeSheet.getRange(2, 2, lastRow - 1, 1).getValues();
-    const foundIdx = codes.findIndex(r => String(r[0]) === targetCode);
+    const rows = judgeSheet.getRange(2, 1, lastRow - 1, 2).getValues();
+    const foundIdx = rows.findIndex(r => String(r[0]) === targetYear && String(r[1]) === targetCode);
     if (foundIdx !== -1) rowIndex = foundIdx + 2;
   }
 
   const rowData = [
-    judge.competition_year || 115,
+    targetYear,
     targetCode,
-    judge.judge_name || '',
-    String(judge.login_password || ''),
-    judge.category_short || ''
+    judgeName,
+    loginPassword,
+    categoryShort
   ];
 
   if (rowIndex !== -1) {
@@ -55,22 +69,26 @@ function processSaveJudge(ss, payload) {
     judgeSheet.appendRow(rowData);
   }
 
-  return { status: 'success', message: `Judge ${targetCode} saved successfully.` };
+  return { status: 'success', message: `Judge ${targetCode} (${targetYear}) saved successfully.` };
 }
 
 function processDeleteJudge(ss, payload) {
-  const code = String(payload.judge_code);
+  const code = String(payload.judge_code || payload.Judge_Code || '');
+  const reqYear = String(payload.competition_year || payload.year || 115);
+
   const judgeSheet = ss.getSheetByName('Judge_Setup');
+  if (!judgeSheet) return { status: 'error', message: 'Judge_Setup sheet not found', data: null };
+
   const lastRow = judgeSheet.getLastRow();
 
   if (lastRow > 1) {
-    const codes = judgeSheet.getRange(2, 2, lastRow - 1, 1).getValues();
-    const foundIdx = codes.findIndex(r => String(r[0]) === code);
+    const rows = judgeSheet.getRange(2, 1, lastRow - 1, 2).getValues();
+    const foundIdx = rows.findIndex(r => String(r[0]) === reqYear && String(r[1]) === code);
     if (foundIdx !== -1) {
       judgeSheet.deleteRow(foundIdx + 2);
-      return { status: 'success', message: `Judge ${code} deleted.` };
+      return { status: 'success', message: `Judge ${code} (${reqYear}) deleted.` };
     }
   }
 
-  return { status: 'error', message: `Judge code ${code} not found.` };
+  return { status: 'error', message: `Judge code ${code} for year ${reqYear} not found.` };
 }
