@@ -4,23 +4,50 @@
  */
 
 function processGetSystemConfig(ss, payload) {
-  const targetYear = payload.year || payload.competition_year || 115;
-  const yearSheet = ss.getSheetByName('Year_Config');
-  if (!yearSheet) return { status: 'error', message: 'Year_Config sheet not found', data: null };
+  const targetYear = String(payload.year || payload.competition_year || 115);
+  let yearSheet = ss.getSheetByName('Year_Config');
+  if (!yearSheet) {
+    yearSheet = ss.insertSheet('Year_Config');
+    yearSheet.appendRow([
+      'Competition_Year', 'Is_Active', 'Rubric_Link', 'Rules_Link', 'System_Lock', 
+      'Category_Group_Map', 'Email_Template_Subject', 'Email_Template_Body'
+    ]);
+  }
 
   const lastRow = yearSheet.getLastRow();
-  if (lastRow < 2) return { status: 'error', message: 'No config found in database', data: null };
+  let targetRow = null;
 
-  const data = yearSheet.getRange(2, 1, lastRow - 1, yearSheet.getLastColumn()).getValues();
-  const targetRow = data.find(row => String(row[0]) === String(targetYear));
+  if (lastRow > 1) {
+    const data = yearSheet.getRange(2, 1, lastRow - 1, 8).getValues();
+    targetRow = data.find(row => String(row[0]) === targetYear);
+  }
 
+  // 若該年度不存在，自動初始化一筆預設設定
   if (!targetRow) {
-    return { status: 'error', message: `Config not found for year ${targetYear}`, data: null };
+    const defaultGroupMap = {
+      "宜蘭在地自然人文特色": ["【宜蘭在地自然人文特色】國中組", "【宜蘭在地自然人文特色】國小組"],
+      "環境永續×SDGs及生活裡的永續": ["【環境永續×SDGs及生活裡的永續】國中組", "【環境永續×SDGs及生活裡的永續】國小組"],
+      "學校校訂課程": ["【學校校訂課程】國中組", "【學校校訂課程】國小組"]
+    };
+    const newRow = [
+      Number(targetYear),
+      true,                                  // Is_Active
+      'https://example.com/rubric',          // Rubric_Link
+      'https://example.com/rules',           // Rules_Link
+      false,                                 // System_Lock (false 代表未鎖定，即開放評分)
+      JSON.stringify(defaultGroupMap),       // Category_Group_Map
+      '【簡報達人擂台賽】通知信',               // Email_Template_Subject
+      '親愛的參賽隊伍您好：\n恭喜完成簡報達人擂台賽提交！' // Email_Template_Body
+    ];
+    yearSheet.appendRow(newRow);
+    targetRow = newRow;
   }
 
   let categories = {};
   try {
-    if (targetRow[5]) categories = JSON.parse(targetRow[5]);
+    if (targetRow[5]) {
+      categories = typeof targetRow[5] === 'string' ? JSON.parse(targetRow[5]) : targetRow[5];
+    }
   } catch (e) {
     Logger.log('Config categories parse error: ' + e);
   }
@@ -30,25 +57,42 @@ function processGetSystemConfig(ss, payload) {
     data: {
       current_year: String(targetRow[0]),
       is_registration_open: !!targetRow[1],
-      is_judging_open: !!targetRow[2],
-      Category_Group_Map: categories
+      rubric_link: String(targetRow[2] || ''),
+      rules_link: String(targetRow[3] || ''),
+      is_judging_open: !targetRow[4], // System_Lock 為 false 時代表開放評分
+      Category_Group_Map: categories,
+      email_subject: String(targetRow[6] || ''),
+      email_body: String(targetRow[7] || '')
     }
   };
 }
 
 function processSaveSystemConfig(ss, payload) {
-  const current_year = payload.current_year || payload.Competition_Year || 115;
-  const is_registration_open = payload.is_registration_open ?? payload.Is_Active;
-  const is_judging_open = payload.is_judging_open ?? !(payload.System_Lock);
+  const current_year = String(payload.current_year || payload.Competition_Year || 115);
+  const is_registration_open = payload.is_registration_open !== undefined ? payload.is_registration_open : (payload.Is_Active ?? true);
+  const rubric_link = payload.rubric_link || payload.Rubric_Link || '';
+  const rules_link = payload.rules_link || payload.Rules_Link || '';
+  const is_judging_open = payload.is_judging_open !== undefined ? payload.is_judging_open : !(payload.System_Lock);
+  const system_lock = !is_judging_open;
   const categories = payload.categories || payload.Category_Group_Map;
+  const email_subject = payload.email_subject || payload.Email_Template_Subject || '';
+  const email_body = payload.email_body || payload.Email_Template_Body || '';
 
-  const yearSheet = ss.getSheetByName('Year_Config');
+  let yearSheet = ss.getSheetByName('Year_Config');
+  if (!yearSheet) {
+    yearSheet = ss.insertSheet('Year_Config');
+    yearSheet.appendRow([
+      'Competition_Year', 'Is_Active', 'Rubric_Link', 'Rules_Link', 'System_Lock', 
+      'Category_Group_Map', 'Email_Template_Subject', 'Email_Template_Body'
+    ]);
+  }
+
   const lastRow = yearSheet.getLastRow();
   let rowIndex = -1;
 
   if (lastRow > 1) {
     const data = yearSheet.getRange(2, 1, lastRow - 1, 1).getValues();
-    const foundIdx = data.findIndex(row => String(row[0]) === String(current_year));
+    const foundIdx = data.findIndex(row => String(row[0]) === current_year);
     if (foundIdx !== -1) rowIndex = foundIdx + 2;
   }
 
@@ -56,14 +100,23 @@ function processSaveSystemConfig(ss, payload) {
   if (typeof categories === 'string') catString = categories;
   else if (typeof categories === 'object' && categories !== null) catString = JSON.stringify(categories);
 
+  const rowData = [
+    Number(current_year),
+    !!is_registration_open,
+    rubric_link,
+    rules_link,
+    !!system_lock,
+    catString,
+    email_subject,
+    email_body
+  ];
+
   if (rowIndex !== -1) {
-    if (is_registration_open !== undefined) yearSheet.getRange(rowIndex, 2).setValue(!!is_registration_open);
-    if (is_judging_open !== undefined) yearSheet.getRange(rowIndex, 3).setValue(!!is_judging_open);
-    if (categories !== undefined) yearSheet.getRange(rowIndex, 6).setValue(catString);
-    return { status: 'success', message: `Config updated for year ${current_year}` };
+    yearSheet.getRange(rowIndex, 1, 1, 8).setValues([rowData]);
+    return { status: 'success', message: `115學年度 系統設定已成功更新！` };
   } else {
-    yearSheet.appendRow([current_year, !!is_registration_open, !!is_judging_open, '', '', catString, '', '']);
-    return { status: 'success', message: `Config created for year ${current_year}` };
+    yearSheet.appendRow(rowData);
+    return { status: 'success', message: `115學年度 系統設定已成功建立！` };
   }
 }
 

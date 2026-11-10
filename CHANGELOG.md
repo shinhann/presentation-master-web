@@ -4,6 +4,20 @@
 
 ---
 
+## [v75.3-115] - 2026-11-10
+
+### ⚙️ Year_Config 資料表雙向讀寫與 Email 範本整合修復
+- **後端 `Service_Config.js` 欄位對齊**：
+  - 嚴格校準 `Year_Config` 8 大欄位順序（`Competition_Year`, `Is_Active`, `Rubric_Link`, `Rules_Link`, `System_Lock`, `Category_Group_Map`, `Email_Template_Subject`, `Email_Template_Body`）。
+  - 修復先前網址被布林值覆蓋與讀取位移問題。
+  - 新增 115 預設設定自動初始化防呆：當年度資料列不存在時自動建立預設值，杜絕讀取中斷錯誤。
+- **前端 `AdminConfigView` (admin-config.js) 增強**：
+  - `handleSave` 完整包含規準網址 (`rubric_link`)、簡章網址 (`rules_link`) 與 Email 範本欄位。
+  - 新增 Email 郵件通知範本編輯區（主旨與內文），支援動態變數替換標籤。
+- **GAS 部署升級**：正式部署升級為 **Version 20**（維持原 Web App 網址不變）。
+
+---
+
 ## [v75.2-115] - 2026-08-20
 
 ### 🛠️ 全新「系統維運與檢測」模組 (AdminHealthView)
