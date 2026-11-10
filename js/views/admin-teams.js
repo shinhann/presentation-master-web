@@ -153,12 +153,12 @@ window.AdminTeamsView = function() {
         <table className="w-full text-left text-xs">
           <thead className="bg-gray-50 border-b text-gray-700 font-bold">
             <tr>
-              <th className="p-3">#</th>
+              <th className="p-3 w-10">#</th>
               <th className="p-3">組別</th>
               <th className="p-3">學校</th>
               <th className="p-3">作品名稱</th>
-              <th className="p-3">成員</th>
-              <th className="p-3">115 檔案連結狀態</th>
+              <th className="p-3 min-w-[240px]">成員與指導教師</th>
+              <th className="p-3 min-w-[220px]">115 檔案繳件連結</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
@@ -167,22 +167,152 @@ window.AdminTeamsView = function() {
             ) : filteredTeams.length === 0 ? (
               <tr><td colSpan="6" className="p-6 text-center text-gray-400">尚無隊伍資料</td></tr>
             ) : (
-              filteredTeams.map((t, idx) => (
-                <tr key={t.team_id || t.Team_ID || idx} className="hover:bg-gray-50">
-                  <td className="p-3 font-semibold text-gray-400">{idx + 1}</td>
-                  <td className="p-3 font-medium text-amber-900">{t.group_name || t.Group_Name}</td>
-                  <td className="p-3 font-bold text-gray-800">{t.school || t.School}</td>
-                  <td className="p-3 text-gray-900 font-medium">{t.work_title || t.Work_Title}</td>
-                  <td className="p-3 text-gray-600">{t.student1_name || t.Student1_Name || '未填'}</td>
-                  <td className="p-3 space-x-1">
-                    {t.MindMap_Link && <span className="px-1.5 py-0.5 bg-sky-100 text-sky-800 rounded">心智圖</span>}
-                    {t.Slides_Link && <span className="px-1.5 py-0.5 bg-amber-100 text-amber-800 rounded">簡報</span>}
-                    {t.Video_Link && <span className="px-1.5 py-0.5 bg-red-100 text-red-800 rounded">影片</span>}
-                    {t.Consent_Link && <span className="px-1.5 py-0.5 bg-emerald-100 text-emerald-800 rounded">同意書</span>}
-                    {t.Course_Plan_Link && <span className="px-1.5 py-0.5 bg-purple-100 text-purple-800 rounded font-bold">校訂課程PDF</span>}
-                  </td>
-                </tr>
-              ))
+              filteredTeams.map((t, idx) => {
+                // 整理學生名單 (學生1, 學生2, 學生3)
+                const students = [
+                  t.student1_name || t.Student1_Name,
+                  t.student2_name || t.Student2_Name,
+                  t.student3_name || t.Student3_Name
+                ].filter(Boolean);
+
+                const teacher1 = t.teacher1_name || t.Teacher1_Name || '';
+                const teacher2 = t.teacher2_name || t.Teacher2_Name || '';
+                const contactPerson = (t.contact_person || t.Contact_Person || '').trim();
+                const contactPhone = (t.contact_phone || t.Contact_Phone || '').trim();
+
+                const isTeacher1Contact = teacher1 && (contactPerson === teacher1 || (!contactPerson && !teacher2));
+                const isTeacher2Contact = teacher2 && contactPerson === teacher2;
+                const isOtherContact = contactPerson && contactPerson !== teacher1 && contactPerson !== teacher2;
+
+                return (
+                  <tr key={t.team_id || t.Team_ID || idx} className="hover:bg-gray-50">
+                    <td className="p-3 font-semibold text-gray-400">{idx + 1}</td>
+                    <td className="p-3 font-medium text-amber-900">{t.category || t.Category || t.group_name || t.Group_Name}</td>
+                    <td className="p-3 font-bold text-gray-800">{t.school || t.School}</td>
+                    <td className="p-3 text-gray-900 font-medium">{t.work_title || t.Work_Title}</td>
+                    
+                    {/* 成員與指導教師 */}
+                    <td className="p-3 space-y-1.5">
+                      <div className="flex items-center text-gray-700">
+                        <span className="font-semibold text-gray-500 mr-1.5">👨‍🎓 學生:</span>
+                        <span>{students.length > 0 ? students.join('、') : '未填寫'}</span>
+                      </div>
+                      
+                      <div className="text-gray-700 space-y-0.5">
+                        <div className="font-semibold text-gray-500">👩‍🏫 指導教師:</div>
+                        {teacher1 ? (
+                          <div className="flex items-center text-[11px] pl-1">
+                            <span className="mr-1">{isTeacher1Contact ? '☑️' : '▫️'}</span>
+                            <span className="font-medium text-gray-800">{teacher1}</span>
+                            {isTeacher1Contact && (
+                              <span className="ml-1.5 px-1 py-0.2 bg-amber-100 text-amber-900 rounded font-bold">
+                                聯絡人 {contactPhone && `📞 ${contactPhone}`}
+                              </span>
+                            )}
+                          </div>
+                        ) : (
+                          <div className="text-gray-400 text-[11px] pl-1">未填寫指導教師一</div>
+                        )}
+
+                        {teacher2 && (
+                          <div className="flex items-center text-[11px] pl-1">
+                            <span className="mr-1">{isTeacher2Contact ? '☑️' : '▫️'}</span>
+                            <span className="font-medium text-gray-800">{teacher2}</span>
+                            {isTeacher2Contact && (
+                              <span className="ml-1.5 px-1 py-0.2 bg-amber-100 text-amber-900 rounded font-bold">
+                                聯絡人 {contactPhone && `📞 ${contactPhone}`}
+                              </span>
+                            )}
+                          </div>
+                        )}
+
+                        {isOtherContact && (
+                          <div className="text-[11px] text-blue-700 pl-1 mt-0.5">
+                            📞 聯絡人: {contactPerson} {contactPhone && `(${contactPhone})`}
+                          </div>
+                        )}
+                      </div>
+                    </td>
+
+                    {/* 115 檔案連結狀態 (直接點選另開分頁) */}
+                    <td className="p-3">
+                      <div className="flex flex-wrap gap-1.5">
+                        {t.MindMap_Link ? (
+                          <a
+                            href={t.MindMap_Link}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="px-2 py-1 bg-sky-50 text-sky-700 border border-sky-300 hover:bg-sky-100 rounded text-[11px] font-semibold flex items-center transition shadow-2xs"
+                            title="開啟心智圖公開連結"
+                          >
+                            🧠 心智圖 ↗
+                          </a>
+                        ) : (
+                          <span className="px-1.5 py-0.5 bg-gray-100 text-gray-400 rounded text-[10px]">無心智圖</span>
+                        )}
+
+                        {t.Slides_Link ? (
+                          <a
+                            href={t.Slides_Link}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="px-2 py-1 bg-amber-50 text-amber-700 border border-amber-300 hover:bg-amber-100 rounded text-[11px] font-semibold flex items-center transition shadow-2xs"
+                            title="開啟簡報檔案"
+                          >
+                            📊 簡報 ↗
+                          </a>
+                        ) : (
+                          <span className="px-1.5 py-0.5 bg-gray-100 text-gray-400 rounded text-[10px]">無簡報</span>
+                        )}
+
+                        {t.Video_Link ? (
+                          <a
+                            href={t.Video_Link}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="px-2 py-1 bg-red-50 text-red-700 border border-red-300 hover:bg-red-100 rounded text-[11px] font-semibold flex items-center transition shadow-2xs"
+                            title="觀看影片"
+                          >
+                            🎬 影片 ↗
+                          </a>
+                        ) : (
+                          <span className="px-1.5 py-0.5 bg-gray-100 text-gray-400 rounded text-[10px]">無影片</span>
+                        )}
+
+                        {t.Consent_Link ? (
+                          <a
+                            href={t.Consent_Link}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="px-2 py-1 bg-emerald-50 text-emerald-700 border border-emerald-300 hover:bg-emerald-100 rounded text-[11px] font-semibold flex items-center transition shadow-2xs"
+                            title="檢視授權同意書"
+                          >
+                            📄 同意書 ↗
+                          </a>
+                        ) : (
+                          <span className="px-1.5 py-0.5 bg-gray-100 text-gray-400 rounded text-[10px]">無同意書</span>
+                        )}
+
+                        {t.Course_Plan_Link ? (
+                          <a
+                            href={t.Course_Plan_Link}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="px-2 py-1 bg-purple-50 text-purple-700 border border-purple-300 hover:bg-purple-100 rounded text-[11px] font-bold flex items-center transition shadow-2xs"
+                            title="檢視校訂課程計畫 PDF"
+                          >
+                            📑 校訂課程PDF ↗
+                          </a>
+                        ) : (
+                          String(t.category || t.group_name || '').includes('校訂課程') && (
+                            <span className="px-1.5 py-0.5 bg-red-100 text-red-600 rounded text-[10px] font-bold">⚠️ 缺課程計畫</span>
+                          )
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })
             )}
           </tbody>
         </table>
