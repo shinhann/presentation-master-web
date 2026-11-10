@@ -84,6 +84,8 @@ function handleRequest(payload) {
       return processImportTeams(ss, payload);
 
     // Scoring & Results (Service_Scores.js)
+    case 'getJudgeScores':
+      return processGetJudgeScores(ss, payload);
     case 'submitScore':
       return processSubmitScore(ss, payload);
       
