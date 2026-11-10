@@ -51,7 +51,7 @@ function handleRequest(payload) {
     case 'login':
       return processLogin(ss, payload, sysConfigValues);
     case 'getJudgeList':
-      return processGetJudgeList(ss);
+      return processGetJudgeList(ss, payload);
 
     // System Config & Year & Health (Service_Config.js)
     case 'getSystemConfig':

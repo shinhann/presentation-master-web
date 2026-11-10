@@ -28,11 +28,17 @@ function processLogin(ss, payload, sysConfigValues) {
     const lastRow = judgeSheet.getLastRow();
     if (lastRow < 2) return { status: 'error', message: 'No judges configured', data: null };
 
+    const reqYear = String(payload.year || payload.competition_year || 115);
     const judgesData = judgeSheet.getRange(2, 1, lastRow - 1, 5).getValues();
-    const judgeRow = judgesData.find(row => String(row[1]) === String(id) || String(row[2]) === String(id));
+    
+    // 同時比對 學年度 + 評審代號/姓名
+    const judgeRow = judgesData.find(row => 
+      String(row[0]) === reqYear &&
+      (String(row[1]) === String(id) || String(row[2]) === String(id))
+    );
 
     if (!judgeRow) {
-      return { status: 'error', message: `找不到評審代號/姓名: ${id}`, data: null };
+      return { status: 'error', message: `找不到 ${reqYear} 學年度評審代號/姓名: ${id}`, data: null };
     }
 
     const storedPassword = String(judgeRow[3]);
@@ -56,7 +62,7 @@ function processLogin(ss, payload, sysConfigValues) {
   return { status: 'error', message: 'Invalid user_type', data: null };
 }
 
-function processGetJudgeList(ss) {
+function processGetJudgeList(ss, payload) {
   const judgeSheet = ss.getSheetByName('Judge_Setup');
   if (!judgeSheet) {
     return { status: 'error', message: 'Judge_Setup sheet not found', data: [] };
@@ -67,14 +73,19 @@ function processGetJudgeList(ss) {
     return { status: 'success', data: [] };
   }
 
+  const reqYear = String((payload && (payload.year || payload.competition_year)) || 115);
   const values = judgeSheet.getRange(2, 1, lastRow - 1, 5).getValues();
-  const list = values.map(row => ({
-    id: String(row[1]),
-    judge_code: String(row[1]),
-    name: String(row[2]),
-    judge_name: String(row[2]),
-    category: String(row[4])
-  }));
+  
+  // 嚴格依照學年度過濾，絕不混入舊年度評審
+  const list = values
+    .filter(row => String(row[0]) === reqYear)
+    .map(row => ({
+      id: String(row[1]),
+      judge_code: String(row[1]),
+      name: String(row[2]),
+      judge_name: String(row[2]),
+      category: String(row[4])
+    }));
 
   return { status: 'success', data: list };
 }

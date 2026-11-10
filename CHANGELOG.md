@@ -4,6 +4,16 @@
 
 ---
 
+## [v75.8-115] - 2026-11-10
+
+### 🔒 登入選單與身分驗證嚴格學年度過濾 (Year Isolation)
+- **修復評審登入選單混入舊年度問題 ([Service_Auth.js](file:///d:/下載（D）/[網頁]簡報達人評審/Service_Auth.js), [Router.js](file:///d:/下載（D）/[網頁]簡報達人評審/Router.js))**：
+  - `processGetJudgeList` 加入 `Competition_Year` 嚴格過濾，確保登入下拉選單**100% 只會列出當前 115 學年度的評審名單**，排除 114 年等舊評審混入。
+  - `processLogin` 評審登入比對同步加入學年度主鍵檢查，確保正確核對 115 學年度的密碼與組別權限。
+- **GAS 部署升級**：正式部署升級為 **Version 24**（維持原 Web App 網址不變）。
+
+---
+
 ## [v75.7-115] - 2026-11-10
 
 ### 🏆 評審端評分核心工作台完整貫通 (Judge Workstation Phase 1)
