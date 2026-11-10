@@ -24,8 +24,8 @@ window.JudgeView = function({ user, onLogout }) {
     if (res.status === 'success' && Array.isArray(res.data)) {
       setTeams(res.data);
       if (res.data.length > 0) {
-        // 預設選擇第一個組別
-        const groups = [...new Set(res.data.map(t => t.group_name || t.Group_Name))].filter(Boolean);
+        // 依照 Category (或 group_name) 提取組別
+        const groups = [...new Set(res.data.map(t => t.category || t.Category || t.group_name || t.Group_Name))].filter(Boolean);
         if (groups.length > 0) setSelectedGroup(groups[0]);
         setActiveTeamId(res.data[0].team_id || res.data[0].Team_ID);
       }
@@ -39,10 +39,10 @@ window.JudgeView = function({ user, onLogout }) {
     setTimeout(() => setToastMsg(''), 3000);
   };
 
-  // 目前選取組別的隊伍清單
+  // 目前選取組別的隊伍清單 (依 category 或 group_name 篩選)
   const filteredTeams = teams.filter(t => {
-    const g = t.group_name || t.Group_Name;
-    return !selectedGroup || g === selectedGroup;
+    const cat = t.category || t.Category || t.group_name || t.Group_Name;
+    return !selectedGroup || cat === selectedGroup;
   });
 
   const activeTeam = teams.find(t => (t.team_id || t.Team_ID) === activeTeamId) || filteredTeams[0];

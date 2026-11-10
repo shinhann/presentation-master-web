@@ -48,23 +48,26 @@ window.AdminTeamsView = function() {
           return;
         }
 
-        // 轉換為標準隊伍格式
-        const formattedTeams = data.map((row, index) => ({
-          team_id: row['隊伍編號'] || row['Team_ID'] || `team_${Date.now()}_${index}`,
-          competition_year: window.APP_CONFIG.CURRENT_YEAR,
-          category: row['類別'] || row['Category'] || '宜蘭在地自然人文特色',
-          group_name: row['組別'] || row['Group_Name'] || row['參賽組別'] || '【宜蘭在地自然人文特色】國小組',
-          school: row['學校'] || row['School'] || row['參賽學校'] || '',
-          work_title: row['作品名稱'] || row['Work_Title'] || row['作品題目'] || '',
-          description: row['作品說明'] || row['Description'] || '',
-          student1_name: row['學生1'] || row['Student1_Name'] || '',
-          teacher1_name: row['指導老師1'] || row['Teacher1_Name'] || '',
-          mindmap_link: row['心智圖連結'] || row['MindMap_Link'] || '',
-          slides_link: row['簡報檔連結'] || row['Slides_Link'] || '',
-          video_link: row['影片連結'] || row['Video_Link'] || '',
-          consent_link: row['同意書連結'] || row['Consent_Link'] || '',
-          course_plan_link: row['校訂課程計畫連結'] || row['Course_Plan_Link'] || '' // 115學年度新增
-        }));
+        // 轉換為標準隊伍格式 (以 category 為核心 6 大組別)
+        const formattedTeams = data.map((row, index) => {
+          const rawCat = row['類別'] || row['Category'] || row['組別'] || row['Group_Name'] || row['參賽組別'] || '宜蘭在地國小組';
+          return {
+            team_id: row['隊伍編號'] || row['Team_ID'] || `team_${Date.now()}_${index}`,
+            competition_year: window.APP_CONFIG.CURRENT_YEAR,
+            category: rawCat,
+            group_name: rawCat,
+            school: row['學校'] || row['School'] || row['參賽學校'] || '',
+            work_title: row['作品名稱'] || row['Work_Title'] || row['作品題目'] || '',
+            description: row['作品說明'] || row['Description'] || '',
+            student1_name: row['學生1'] || row['Student1_Name'] || '',
+            teacher1_name: row['指導老師1'] || row['Teacher1_Name'] || '',
+            mindmap_link: row['心智圖連結'] || row['MindMap_Link'] || '',
+            slides_link: row['簡報檔連結'] || row['Slides_Link'] || '',
+            video_link: row['影片連結'] || row['Video_Link'] || '',
+            consent_link: row['同意書連結'] || row['Consent_Link'] || '',
+            course_plan_link: row['校訂課程計畫連結'] || row['Course_Plan_Link'] || '' // 115學年度新增
+          };
+        });
 
         setStatusMsg(`已解析 ${formattedTeams.length} 隊，準備寫入資料庫...`);
         const res = await window.ApiService.importTeams(formattedTeams);
@@ -90,9 +93,9 @@ window.AdminTeamsView = function() {
   const filteredTeams = teams.filter(t => {
     const title = t.work_title || t.Work_Title || '';
     const school = t.school || t.School || '';
-    const group = t.group_name || t.Group_Name || '';
+    const cat = t.category || t.Category || t.group_name || t.Group_Name || '';
     const matchesSearch = title.includes(searchQuery) || school.includes(searchQuery);
-    const matchesGroup = !selectedGroupFilter || group === selectedGroupFilter;
+    const matchesGroup = !selectedGroupFilter || cat === selectedGroupFilter;
     return matchesSearch && matchesGroup;
   });
 
