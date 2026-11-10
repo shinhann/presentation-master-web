@@ -1,6 +1,6 @@
 /**
- * 簡報達人評分系統 v75.7 - GAS Scoring Service (Service_Scores.js)
- * 職責：處理評審評分歷史讀取、數據寫入與高併發鎖定
+ * 簡報達人評分系統 v75.9 - GAS Scoring Service (Service_Scores.js)
+ * 職責：處理評審評分歷史讀取、40/30/20/10 配分直接加總寫入與高併發鎖定
  */
 
 /**
@@ -23,22 +23,29 @@ function processGetJudgeScores(ss, payload) {
     return matchYear && matchJudge;
   });
 
-  const scores = filtered.map(row => ({
-    competition_year: row[0],
-    category: row[1],
-    group_name: row[2],
-    team_id: String(row[3]),
-    judge_code: String(row[4]),
-    score_content: Number(row[5] || 80),
-    score_expression: Number(row[6] || 80),
-    score_stage: Number(row[7] || 80),
-    score_technique: Number(row[8] || 80),
-    total_score: Number(row[9] || 80),
-    award: String(row[10] || ''),
-    award_recommendation: String(row[10] || ''),
-    comment: String(row[11] || ''),
-    last_updated: row[13]
-  }));
+  const scores = filtered.map(row => {
+    const c = Number(row[5] ?? 32);
+    const e = Number(row[6] ?? 24);
+    const st = Number(row[7] ?? 16);
+    const t = Number(row[8] ?? 8);
+    const total = Number(row[9] || (c + e + st + t));
+    return {
+      competition_year: row[0],
+      category: row[1],
+      group_name: row[2],
+      team_id: String(row[3]),
+      judge_code: String(row[4]),
+      score_content: c,
+      score_expression: e,
+      score_stage: st,
+      score_technique: t,
+      total_score: total,
+      award: String(row[10] || ''),
+      award_recommendation: String(row[10] || ''),
+      comment: String(row[11] || ''),
+      last_updated: row[13]
+    };
+  });
 
   return { status: 'success', data: scores };
 }
@@ -76,7 +83,6 @@ function processSubmitScore(ss, payload) {
       score_expression,
       score_stage,
       score_technique,
-      total_score,
       award_recommendation,
       comment
     } = payload;
@@ -99,6 +105,12 @@ function processSubmitScore(ss, payload) {
       if (foundIdx !== -1) rowIndex = foundIdx + 2;
     }
 
+    const c = Math.min(40, Math.max(0, Number(score_content || 0)));
+    const e = Math.min(30, Math.max(0, Number(score_expression || 0)));
+    const st = Math.min(20, Math.max(0, Number(score_stage || 0)));
+    const t = Math.min(10, Math.max(0, Number(score_technique || 0)));
+    const calculatedTotal = Number((c + e + st + t).toFixed(1));
+
     const now = new Date();
     const catValue = category || group_name || '';
     const rowData = [
@@ -107,11 +119,11 @@ function processSubmitScore(ss, payload) {
       group_name || catValue,
       String(team_id),
       String(judge_code),
-      Number(score_content || 0),
-      Number(score_expression || 0),
-      Number(score_stage || 0),
-      Number(score_technique || 0),
-      Number(total_score || 0),
+      c,
+      e,
+      st,
+      t,
+      calculatedTotal,
       award_recommendation || '',
       comment || '',
       Utilities.getUuid(),
@@ -127,7 +139,7 @@ function processSubmitScore(ss, payload) {
     return {
       status: 'success',
       message: '評分已成功寫入雲端試算表！',
-      data: { team_id, judge_code, total_score: Number(total_score || 0), updated_at: now.toISOString() }
+      data: { team_id, judge_code, total_score: calculatedTotal, updated_at: now.toISOString() }
     };
   } finally {
     lock.releaseLock();
