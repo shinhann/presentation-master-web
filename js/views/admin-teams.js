@@ -11,10 +11,18 @@ window.AdminTeamsView = function() {
   const [statusMsg, setStatusMsg] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedGroupFilter, setSelectedGroupFilter] = useState('');
+  const [expandedDescriptions, setExpandedDescriptions] = useState({}); // { [teamId]: true/false }
 
   useEffect(() => {
     fetchTeams();
   }, []);
+
+  const toggleDescription = (id) => {
+    setExpandedDescriptions(prev => ({
+      ...prev,
+      [id]: !prev[id]
+    }));
+  };
 
   const fetchTeams = async () => {
     setLoading(true);
@@ -156,7 +164,7 @@ window.AdminTeamsView = function() {
               <th className="p-3 w-10">#</th>
               <th className="p-3">組別</th>
               <th className="p-3">學校</th>
-              <th className="p-3">作品名稱</th>
+              <th className="p-3 min-w-[220px]">作品名稱與說明</th>
               <th className="p-3 min-w-[240px]">成員與指導教師</th>
               <th className="p-3 min-w-[220px]">115 檔案繳件連結</th>
             </tr>
@@ -168,6 +176,10 @@ window.AdminTeamsView = function() {
               <tr><td colSpan="6" className="p-6 text-center text-gray-400">尚無隊伍資料</td></tr>
             ) : (
               filteredTeams.map((t, idx) => {
+                const teamKey = t.team_id || t.Team_ID || idx;
+                const isExpanded = !!expandedDescriptions[teamKey];
+                const desc = (t.description || t.Description || '').trim();
+
                 // 整理學生名單 (學生1, 學生2, 學生3)
                 const students = [
                   t.student1_name || t.Student1_Name,
@@ -185,11 +197,38 @@ window.AdminTeamsView = function() {
                 const isOtherContact = contactPerson && contactPerson !== teacher1 && contactPerson !== teacher2;
 
                 return (
-                  <tr key={t.team_id || t.Team_ID || idx} className="hover:bg-gray-50">
+                  <tr key={teamKey} className="hover:bg-gray-50 align-top">
                     <td className="p-3 font-semibold text-gray-400">{idx + 1}</td>
                     <td className="p-3 font-medium text-amber-900">{t.category || t.Category || t.group_name || t.Group_Name}</td>
                     <td className="p-3 font-bold text-gray-800">{t.school || t.School}</td>
-                    <td className="p-3 text-gray-900 font-medium">{t.work_title || t.Work_Title}</td>
+                    
+                    {/* 作品名稱與手風琴收摺說明 */}
+                    <td className="p-3 space-y-1.5">
+                      <div className="text-gray-900 font-bold text-sm">
+                        {t.work_title || t.Work_Title}
+                      </div>
+
+                      {desc ? (
+                        <div className="bg-gray-50 p-2 rounded-lg border border-gray-200 text-xs space-y-1">
+                          <div className={`text-gray-600 transition-all leading-relaxed ${isExpanded ? '' : 'line-clamp-2'}`}>
+                            <span className="font-semibold text-gray-500 mr-1">📝 說明:</span>
+                            {desc}
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => toggleDescription(teamKey)}
+                            className="text-[11px] text-amber-900 hover:text-amber-950 font-bold flex items-center pt-0.5 focus:outline-none"
+                          >
+                            <span className="material-icons text-xs mr-0.5">
+                              {isExpanded ? 'expand_less' : 'expand_more'}
+                            </span>
+                            {isExpanded ? '收合作品說明' : '展開完整作品說明'}
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="text-gray-400 text-[11px] italic">尚無作品說明</div>
+                      )}
+                    </td>
                     
                     {/* 成員與指導教師 */}
                     <td className="p-3 space-y-1.5">
