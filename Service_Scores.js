@@ -164,20 +164,32 @@ function processExportJudgeSheet(ss, payload) {
   // 建立全新獨立 Google 試算表檔案 (完全隔離主資料庫，防範機密外洩)
   const standaloneTitle = `115學年度_【${category}】_評審${judgeCode}_${judgeName}_評分表`;
   
-  let newSS;
-  const existingFiles = DriveApp.getFilesByName(standaloneTitle);
-  if (existingFiles.hasNext()) {
-    const existingFile = existingFiles.next();
-    newSS = SpreadsheetApp.open(existingFile);
-  } else {
+  let newSS = null;
+
+  // 1. 嘗試搜尋是否已有同名獨立檔案 (避免重複建立，容錯 DriveApp 尚未授權狀況)
+  try {
+    const existingFiles = DriveApp.getFilesByName(standaloneTitle);
+    if (existingFiles.hasNext()) {
+      newSS = SpreadsheetApp.open(existingFiles.next());
+    }
+  } catch (driveErr) {
+    Logger.log('DriveApp search bypassed: ' + driveErr.toString());
+  }
+
+  // 2. 若尚無檔案或 DriveApp 未授權，使用原生 SpreadsheetApp.create 建立全新獨立試算表
+  if (!newSS) {
     newSS = SpreadsheetApp.create(standaloneTitle);
   }
 
-  // 設定檔案權限為「知道連結者可檢視」 (免登入、防篡改、不暴露主資料庫)
-  const driveFile = DriveApp.getFileById(newSS.getId());
-  driveFile.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+  // 3. 嘗試設定檔案權限為「知道連結者可檢視」 (防篡改、免登入檢視)
+  try {
+    const driveFile = DriveApp.getFileById(newSS.getId());
+    driveFile.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+  } catch (sharingErr) {
+    Logger.log('DriveApp sharing requires one-time permission: ' + sharingErr.toString());
+  }
 
-  // 取得該獨立檔案之工作表並清理格式
+  // 4. 取得該獨立檔案之工作表並清理格式
   let targetSheet = newSS.getSheets()[0];
   try {
     targetSheet.setName(`${category}_評分表`.substring(0, 95));
@@ -186,10 +198,12 @@ function processExportJudgeSheet(ss, payload) {
   targetSheet.clearFormats();
 
   // 若主資料庫先前有暫存分頁，一併清理以維護主資料庫整潔純淨
-  const oldMasterTab = ss.getSheetByName(`評分表_${judgeCode}_${category}`.substring(0, 95));
-  if (oldMasterTab) {
-    try { ss.deleteSheet(oldMasterTab); } catch (e) {}
-  }
+  try {
+    const oldMasterTab = ss.getSheetByName(`評分表_${judgeCode}_${category}`.substring(0, 95));
+    if (oldMasterTab) {
+      ss.deleteSheet(oldMasterTab);
+    }
+  } catch (cleanErr) {}
 
   const totalCols = isCourseGroup ? 13 : 12;
 
@@ -343,4 +357,12 @@ function processExportJudgeSheet(ss, payload) {
       sheet_name: standaloneTitle
     }
   };
+}
+
+/**
+ * 系統管理員一次性授權 Google Drive 權限輔助函式
+ */
+function authorizeGoogleDrive() {
+  const rootName = DriveApp.getRootFolder().getName();
+  Logger.log('✅ Google Drive 權限已成功授權！根目錄：' + rootName);
 }
