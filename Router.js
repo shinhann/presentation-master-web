@@ -88,6 +88,8 @@ function handleRequest(payload) {
       return processGetJudgeScores(ss, payload);
     case 'submitScore':
       return processSubmitScore(ss, payload);
+    case 'exportJudgeSheet':
+      return processExportJudgeSheet(ss, payload);
       
     default:
       return { status: 'error', message: `Unknown Action: ${payload.action}`, data: null };

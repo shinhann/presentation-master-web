@@ -114,6 +114,11 @@ window.ApiService = {
     return this.request('submitScore', scoreData);
   },
 
+  // 12b. 產生並取得格式化 Google 試算表評分表連結
+  async exportJudgeSheet(payloadData) {
+    return this.request('exportJudgeSheet', payloadData);
+  },
+
   // 13. 系統完整性一鍵診斷
   async checkSystemHealth(year) {
     return this.request('checkSystemHealth', { year: year || window.APP_CONFIG.CURRENT_YEAR });

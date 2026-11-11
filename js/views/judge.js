@@ -1,13 +1,14 @@
 /**
  * 簡報達人評分系統 115學年度 - 評審評分核心工作台 (js/views/judge.js)
- * 升級版 (v76.0-115)：
+ * 升級版 (v76.1-115)：
  * 1. 嚴格鎖定評審負責組別 (不顯示未授權組別)
- * 2. 長者友善三段字級切換 (【中】/【大(預設)】/【特大(老花友善)】) + 左側隊伍列表全面放大
+ * 2. 簡潔三段字體大小切換：【小】/【中】/【大】 + 左側隊伍列表全面放大
  * 3. 影片播放雙重保險 (YouTube/Drive 智慧內嵌 + 醒目大按鈕外連)
  * 4. 40 / 30 / 20 / 10 配分直觀制 (滑桿拉到底即為該項滿分，直接相加 = 100)
  * 5. 115 評分規準側邊抽屜 (內建多元評量表 + 連動後台 Rubric_Link)
  * 6. 三重防遺失機制 (LocalStorage 秒級草稿 + 切換攔截自動存檔 + 關閉視窗提醒)
- * 7. 本組評分清冊與簽名表 (A4 橫向跨頁表頭重複、斑馬紋交替色、移除賽前審核欄、複合隊伍標題、完整評語、以下空白、簽名處 + SheetJS Excel 匯出)
+ * 7. 單一清晰入口「本組評分總表 (簽名單)」(A4 橫向跨頁表頭重複、斑馬紋、以下空白、簽名處 + 雲端 Google 試算表自動排版產生)
+ * 8. 完評下一步操作導引說明 (進度達 100% 時自動提示列印與簽名流程)
  */
 
 window.JudgeView = function({ user, onLogout }) {
@@ -27,17 +28,21 @@ window.JudgeView = function({ user, onLogout }) {
   const [rulesUrl, setRulesUrl] = useState('');
   const [rubricDrawerOpen, setRubricDrawerOpen] = useState(false);
   const [printSheetOpen, setPrintSheetOpen] = useState(false);
+  const [exportingSheet, setExportingSheet] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [toastMsg, setToastMsg] = useState('');
   const [descExpanded, setDescExpanded] = useState(false);
 
-  // 長者友善字級狀態：'md' (中) | 'lg' (大-預設推薦) | 'xl' (特大-老花友善)
+  // 字體大小狀態：'sm' (小) | 'md' (中 - 預設) | 'lg' (大)
   const [fontScale, setFontScale] = useState(() => {
     try {
-      return localStorage.getItem(fontScaleStorageKey) || 'lg';
+      const saved = localStorage.getItem(fontScaleStorageKey);
+      if (saved === 'xl') return 'lg';
+      if (saved === 'sm' || saved === 'md' || saved === 'lg') return saved;
+      return 'md';
     } catch (e) {
-      return 'lg';
+      return 'md';
     }
   });
 
@@ -50,9 +55,9 @@ window.JudgeView = function({ user, onLogout }) {
     }
   };
 
-  // 字級對應樣式映射表 (確保左側欄與右側工作台皆隨字級同步放大)
+  // 字級對應樣式映射表 (小 / 中 / 大)
   const uiScale = useMemo(() => {
-    if (fontScale === 'xl') {
+    if (fontScale === 'lg') {
       return {
         sidebarWidth: 'w-full lg:w-[470px] xl:w-[500px]',
         sidebarHeader: 'text-lg',
@@ -70,7 +75,7 @@ window.JudgeView = function({ user, onLogout }) {
         commentText: 'text-xl leading-relaxed'
       };
     }
-    if (fontScale === 'md') {
+    if (fontScale === 'sm') {
       return {
         sidebarWidth: 'w-full lg:w-96',
         sidebarHeader: 'text-sm',
@@ -88,7 +93,7 @@ window.JudgeView = function({ user, onLogout }) {
         commentText: 'text-base leading-relaxed'
       };
     }
-    // 預設 'lg' (大 - 推薦 40 歲以上評審舒適閱讀)
+    // 預設 'md' (中 - 舒適易讀大字)
     return {
       sidebarWidth: 'w-full lg:w-[420px] xl:w-[450px]',
       sidebarHeader: 'text-base',
@@ -147,13 +152,11 @@ window.JudgeView = function({ user, onLogout }) {
         window.ApiService.getSystemConfig(window.APP_CONFIG.CURRENT_YEAR)
       ]);
 
-      // A. 取得後台設定的評分規準連結 (Rubric_Link)
       if (configRes.status === 'success' && configRes.data) {
         setRubricUrl(configRes.data.rubric_link || '');
         setRulesUrl(configRes.data.rules_link || '');
       }
 
-      // B. 嚴格過濾出該評審負責組別的隊伍
       let authorizedTeams = [];
       if (teamsRes.status === 'success' && Array.isArray(teamsRes.data)) {
         authorizedTeams = teamsRes.data.filter(t => {
@@ -163,7 +166,6 @@ window.JudgeView = function({ user, onLogout }) {
         setTeams(authorizedTeams);
       }
 
-      // C. 合併「雲端已存分數」與「本機 LocalStorage 暫存草稿」
       const mergedMap = {};
       if (scoresRes.status === 'success' && Array.isArray(scoresRes.data)) {
         scoresRes.data.forEach(s => {
@@ -190,7 +192,6 @@ window.JudgeView = function({ user, onLogout }) {
         });
       }
 
-      // 讀取本機未送出草稿 (第一重防護回存)
       try {
         const localDraftRaw = localStorage.getItem(draftStorageKey);
         if (localDraftRaw) {
@@ -207,7 +208,6 @@ window.JudgeView = function({ user, onLogout }) {
 
       setScoresMap(mergedMap);
 
-      // D. 預設選取第一個授權組別與第一支隊伍
       if (allowedGroupList.length > 0) {
         const defaultGroup = selectedGroup && allowedGroupList.includes(selectedGroup) ? selectedGroup : allowedGroupList[0];
         setSelectedGroup(defaultGroup);
@@ -225,7 +225,6 @@ window.JudgeView = function({ user, onLogout }) {
     setLoading(false);
   };
 
-  // 將草稿同步寫入 LocalStorage
   const syncDraftToLocal = (updatedMap) => {
     try {
       const onlyDrafts = {};
@@ -240,13 +239,11 @@ window.JudgeView = function({ user, onLogout }) {
     }
   };
 
-  // 顯示通知 Toast
   const showToast = (msg) => {
     setToastMsg(msg);
-    setTimeout(() => setToastMsg(''), 3500);
+    setTimeout(() => setToastMsg(''), 4500);
   };
 
-  // 直接相加總分計算：內容(40) + 表達(30) + 台風(20) + 技巧(10) = 100分
   const calculateTotal = (s) => {
     if (!s) return 80;
     const c = Number(s.score_content ?? 32);
@@ -256,7 +253,6 @@ window.JudgeView = function({ user, onLogout }) {
     return Number((c + e + st + t).toFixed(1));
   };
 
-  // 當前組別隊伍清單 (僅限該評審授權範圍)
   const filteredTeams = useMemo(() => {
     return teams.filter(t => {
       const cat = String(t.category || t.Category || t.group_name || t.Group_Name || '').trim();
@@ -264,7 +260,6 @@ window.JudgeView = function({ user, onLogout }) {
     });
   }, [teams, selectedGroup]);
 
-  // 計算當前組別各隊伍在該評審心中的即時序位 (Rank: 分數最高為 1)
   const rankMap = useMemo(() => {
     const scoredList = [];
     filteredTeams.forEach(t => {
@@ -288,7 +283,6 @@ window.JudgeView = function({ user, onLogout }) {
 
   const activeTeam = teams.find(t => (t.team_id || t.Team_ID) === activeTeamId) || filteredTeams[0];
 
-  // 目前隊伍的評分狀態 (預設約 8 成基準分：32 + 24 + 16 + 8 = 80)
   const currentScore = (activeTeam && scoresMap[activeTeam.team_id || activeTeam.Team_ID]) || {
     score_content: 32,
     score_expression: 24,
@@ -299,7 +293,6 @@ window.JudgeView = function({ user, onLogout }) {
     status: 'unrated'
   };
 
-  // 各指標滿分上限表
   const MAX_SCORES = {
     score_content: 40,
     score_expression: 30,
@@ -307,7 +300,6 @@ window.JudgeView = function({ user, onLogout }) {
     score_technique: 10
   };
 
-  // 更新目前評分欄位 + 第一重防護：立即寫入 LocalStorage
   const updateScoreField = (field, val) => {
     if (!activeTeam) return;
     const tid = activeTeam.team_id || activeTeam.Team_ID;
@@ -340,7 +332,6 @@ window.JudgeView = function({ user, onLogout }) {
     });
   };
 
-  // 儲存/提交評分至後端試算表
   const handleSubmitScore = async (silent = false) => {
     if (!activeTeam) return false;
     const tid = activeTeam.team_id || activeTeam.Team_ID;
@@ -368,6 +359,7 @@ window.JudgeView = function({ user, onLogout }) {
     setSaving(false);
 
     if (res.status === 'success') {
+      let nextSavedCount = 0;
       setScoresMap(prev => {
         const nextMap = {
           ...prev,
@@ -378,10 +370,18 @@ window.JudgeView = function({ user, onLogout }) {
           }
         };
         syncDraftToLocal(nextMap);
+        nextSavedCount = filteredTeams.filter(t => {
+          const s = nextMap[t.team_id || t.Team_ID];
+          return s && s.status === 'saved';
+        }).length;
         return nextMap;
       });
       if (!silent) {
-        showToast(`✅ 【${activeTeam.work_title || activeTeam.Work_Title}】評分 (${total}分) 已成功存入雲端試算表！`);
+        if (filteredTeams.length > 0 && nextSavedCount === filteredTeams.length) {
+          showToast(`🎉 恭喜！本組 (${selectedGroup}) 所有隊伍已全數評分完畢！請點選上方「本組評分總表 (簽名單)」列印並簽名。`);
+        } else {
+          showToast(`✅ 【${activeTeam.work_title || activeTeam.Work_Title}】評分 (${total}分) 已成功存入雲端試算表！`);
+        }
       }
       return true;
     } else {
@@ -390,7 +390,6 @@ window.JudgeView = function({ user, onLogout }) {
     }
   };
 
-  // 第二重防護：切換隊伍或組別時，若當前隊伍有未儲存草稿，主動詢問是否先幫評審存檔
   const handleSafeSwitchTeam = async (targetTeamId, targetGroup = null) => {
     if (activeTeam) {
       const currentTid = activeTeam.team_id || activeTeam.Team_ID;
@@ -409,7 +408,6 @@ window.JudgeView = function({ user, onLogout }) {
     setDescExpanded(false);
   };
 
-  // 增強版影片嵌入網址解析
   const getEmbedVideoUrl = (url) => {
     if (!url) return null;
     const str = String(url).trim();
@@ -431,111 +429,59 @@ window.JudgeView = function({ user, onLogout }) {
     return null;
   };
 
-  // 匯出本組評分表 Excel (.xlsx)
-  const handleExportGroupExcel = () => {
-    if (!window.XLSX) {
-      alert('Excel 匯出套件載入中，請稍候再試！');
-      return;
+  // 產生並開啟雲端格式化 Google 試算表評分表
+  const handleOpenGoogleSheet = async () => {
+    setExportingSheet(true);
+    try {
+      const rowsPayload = filteredTeams.map((team, idx) => {
+        const tid = team.team_id || team.Team_ID;
+        const sc = scoresMap[tid];
+        const awardPrefix = sc && sc.award ? `★ 特色表現獎推薦：${sc.award}\n` : '';
+        return {
+          seq_label: `第 ${String(idx + 1).padStart(2, '0')} 隊`,
+          school: team.school || team.School || '',
+          team_name: team.team_name || team.Team_Name || '',
+          work_title: team.work_title || team.Work_Title || '',
+          description: String(team.description || team.Description || '').trim(),
+          course_link: team.Course_Plan_Link || team.course_plan_link || '',
+          slides_link: team.Slides_Link || team.slides_link || '',
+          mindmap_link: team.MindMap_Link || team.mindmap_link || '',
+          video_link: team.Video_Link || team.video_link || '',
+          score_content: sc ? sc.score_content : '',
+          score_expression: sc ? sc.score_expression : '',
+          score_stage: sc ? sc.score_stage : '',
+          score_technique: sc ? sc.score_technique : '',
+          total_score: sc ? calculateTotal(sc) : 0,
+          rank: sc ? (rankMap[tid] || '') : '',
+          comment: sc ? `${awardPrefix}${sc.comment || ''}` : ''
+        };
+      });
+
+      const res = await window.ApiService.exportJudgeSheet({
+        judge_code: judgeCode,
+        judge_name: judgeName,
+        category: selectedGroup,
+        rows: rowsPayload
+      });
+
+      if (res.status === 'success' && res.data && res.data.sheet_url) {
+        window.open(res.data.sheet_url, '_blank', 'noopener,noreferrer');
+        showToast('✅ 已在雲端試算表自動建立完整排版之評分表，並於新分頁開啟！');
+      } else {
+        alert(`❌ 產生 Google 試算表失敗：${res.message || '未知錯誤'}`);
+      }
+    } catch (err) {
+      alert(`❌ 產生失敗：${err.message}`);
     }
-    const isCourseGroup = String(selectedGroup || '').includes('校訂課程');
-
-    const headers = [
-      '參賽隊伍與作品標題',
-      '作品說明',
-      ...(isCourseGroup ? ['校訂課程計畫'] : []),
-      '簡報檔',
-      'Mindomo心智圖',
-      '影片檔',
-      '內容 40%',
-      '表達能力 30%',
-      '臺風表現 20%',
-      '製作技巧 10%',
-      '分數加總',
-      '序位法',
-      '評語'
-    ];
-
-    const aoa = [
-      [`【115學年度 簡報達人擂台賽 — ${selectedGroup}】評分表`],
-      [`評審委員：${judgeName} (代號 ${judgeCode})`, '', `匯出日期：${new Date().toLocaleDateString('zh-TW')}`],
-      headers
-    ];
-
-    filteredTeams.forEach((team, idx) => {
-      const tid = team.team_id || team.Team_ID;
-      const sc = scoresMap[tid];
-      const seqStr = `第 ${String(idx + 1).padStart(2, '0')} 隊`;
-      const schoolStr = team.school || team.School || '';
-      const teamNameStr = team.team_name || team.Team_Name || '';
-      const titleStr = team.work_title || team.Work_Title || '';
-      const compositeTitle = `${seqStr}｜${schoolStr}${teamNameStr ? `【${teamNameStr}】` : ''}\n${titleStr}`;
-      const descStr = String(team.description || team.Description || '').trim();
-
-      const cScore = sc ? sc.score_content : '';
-      const eScore = sc ? sc.score_expression : '';
-      const stScore = sc ? sc.score_stage : '';
-      const tScore = sc ? sc.score_technique : '';
-      const totalScore = sc ? calculateTotal(sc) : 0;
-      const rankVal = sc ? (rankMap[tid] || '') : '';
-      const awardPrefix = sc && sc.award ? `【推薦：${sc.award}】\n` : '';
-      const commentStr = sc ? `${awardPrefix}${sc.comment || ''}` : '';
-
-      const row = [
-        compositeTitle,
-        descStr,
-        ...(isCourseGroup ? [team.Course_Plan_Link || team.course_plan_link || ''] : []),
-        team.Slides_Link || team.slides_link || '',
-        team.MindMap_Link || team.mindmap_link || '',
-        team.Video_Link || team.video_link || '',
-        cScore,
-        eScore,
-        stScore,
-        tScore,
-        totalScore,
-        rankVal,
-        commentStr
-      ];
-      aoa.push(row);
-    });
-
-    // 以下空白列
-    const blankRow = new Array(headers.length).fill('');
-    blankRow[0] = '以下空白';
-    aoa.push(blankRow);
-
-    // 簽名列
-    const sigRow = new Array(headers.length).fill('');
-    sigRow[0] = '請評審委員在分數下方簽名：';
-    sigRow[isCourseGroup ? 6 : 5] = '（評審簽章處）';
-    aoa.push([]);
-    aoa.push(sigRow);
-
-    const ws = window.XLSX.utils.aoa_to_sheet(aoa);
-    ws['!cols'] = [
-      { wch: 28 }, // 參賽隊伍與作品標題
-      { wch: 42 }, // 作品說明
-      ...(isCourseGroup ? [{ wch: 16 }] : []),
-      { wch: 16 }, // 簡報檔
-      { wch: 16 }, // 心智圖
-      { wch: 16 }, // 影片檔
-      { wch: 11 }, // 內容 40%
-      { wch: 13 }, // 表達能力 30%
-      { wch: 13 }, // 臺風表現 20%
-      { wch: 13 }, // 製作技巧 10%
-      { wch: 11 }, // 分數加總
-      { wch: 10 }, // 序位法
-      { wch: 48 }  // 評語
-    ];
-
-    const wb = window.XLSX.utils.book_new();
-    window.XLSX.utils.book_append_sheet(wb, ws, `${selectedGroup}_評分表`);
-    window.XLSX.writeFile(wb, `115學年度_${selectedGroup}_評審${judgeCode}_${judgeName}_評分表.xlsx`);
+    setExportingSheet(false);
   };
 
   const savedCount = filteredTeams.filter(t => {
     const sc = scoresMap[t.team_id || t.Team_ID];
     return sc && sc.status === 'saved';
   }).length;
+
+  const isGroupAllCompleted = filteredTeams.length > 0 && savedCount === filteredTeams.length;
 
   if (loading) {
     return (
@@ -557,9 +503,9 @@ window.JudgeView = function({ user, onLogout }) {
     <div className="min-h-screen flex flex-col text-base" style={{ backgroundColor: 'var(--bg-light)' }}>
       {/* Toast 浮動提示 */}
       {toastMsg && (
-        <div className="no-print fixed top-5 right-5 z-50 bg-gray-900 text-white px-5 py-3.5 rounded-xl shadow-2xl flex items-center text-base font-bold border border-gray-700">
-          <span className="material-icons text-emerald-400 mr-2 text-xl">check_circle</span>
-          {toastMsg}
+        <div className="no-print fixed top-5 right-5 z-50 bg-gray-900 text-white px-5 py-3.5 rounded-xl shadow-2xl flex items-center text-base font-bold border border-gray-700 max-w-xl">
+          <span className="material-icons text-emerald-400 mr-2 text-xl shrink-0">check_circle</span>
+          <span>{toastMsg}</span>
         </div>
       )}
 
@@ -567,7 +513,7 @@ window.JudgeView = function({ user, onLogout }) {
           主工作台外層 (當開啟評分表列印時標記 no-print，確保列印只印評分表)
          ========================================================= */}
       <div className="no-print flex-1 flex flex-col min-h-screen">
-        {/* 1. App Bar 頂部導覽列 */}
+        {/* 1. App Bar 頂部導覽列 (列印總表按鈕唯一入口，與同步、登出並列) */}
         <header className="bg-amber-950 text-white px-6 py-3.5 shadow-md flex flex-col xl:flex-row justify-between items-start xl:items-center gap-3">
           <div className="flex items-center space-x-3">
             <span className="material-icons text-amber-400 text-3xl">workspace_premium</span>
@@ -582,21 +528,21 @@ window.JudgeView = function({ user, onLogout }) {
           </div>
 
           <div className="flex flex-wrap items-center gap-2.5">
-            {/* 長者友善三段字級切換器 */}
+            {/* 簡潔三段字體切換器：只顯示「小、中、大」 */}
             <div className="flex items-center bg-amber-900/90 border border-amber-700 rounded-xl p-1 mr-1">
-              <span className="text-xs sm:text-sm text-amber-200 font-bold px-2 flex items-center">
-                <span className="material-icons text-base mr-1">format_size</span>字體大小：
+              <span className="text-sm text-amber-200 font-bold px-2 flex items-center">
+                <span className="material-icons text-base mr-1">format_size</span>字體：
               </span>
               {[
+                { id: 'sm', label: '小' },
                 { id: 'md', label: '中' },
-                { id: 'lg', label: '大 (預設)' },
-                { id: 'xl', label: '特大 (老花友善)' }
+                { id: 'lg', label: '大' }
               ].map(opt => (
                 <button
                   key={opt.id}
                   type="button"
                   onClick={() => handleChangeFontScale(opt.id)}
-                  className={`px-3 py-1.5 rounded-lg text-sm font-black transition cursor-pointer ${
+                  className={`px-3 py-1 rounded-lg text-sm font-black transition cursor-pointer ${
                     fontScale === opt.id
                       ? 'bg-amber-400 text-amber-950 shadow-xs'
                       : 'text-amber-100 hover:bg-amber-800'
@@ -607,12 +553,13 @@ window.JudgeView = function({ user, onLogout }) {
               ))}
             </div>
 
+            {/* 單一列印總表按鈕 (僅保留一個印表機圖示) */}
             <button
               onClick={() => setPrintSheetOpen(true)}
               className="bg-emerald-600 hover:bg-emerald-500 text-white font-black text-sm px-4 py-2 rounded-lg flex items-center shadow-sm transition cursor-pointer"
             >
               <span className="material-icons text-base mr-1.5">print</span>
-              🖨️ 產生/列印本組評分表 (簽名單)
+              本組評分總表 (簽名單)
             </button>
 
             <button
@@ -620,7 +567,7 @@ window.JudgeView = function({ user, onLogout }) {
               className="bg-amber-500 hover:bg-amber-400 text-amber-950 font-black text-sm px-4 py-2 rounded-lg flex items-center shadow-sm transition cursor-pointer"
             >
               <span className="material-icons text-base mr-1.5">menu_book</span>
-              📋 查看評分標準規準
+              查看評分標準規準
             </button>
 
             <button
@@ -639,7 +586,7 @@ window.JudgeView = function({ user, onLogout }) {
           </div>
         </header>
 
-        {/* 2. 組別切換與進度條 (嚴格只顯示該評審被授權的組別！) */}
+        {/* 2. 組別切換與進度條 */}
         <div className="bg-white border-b px-6 py-3 flex flex-wrap justify-between items-center gap-4 shadow-2xs">
           <div className="flex flex-wrap items-center gap-2.5">
             <span className="text-base font-bold text-gray-800 flex items-center">
@@ -667,7 +614,7 @@ window.JudgeView = function({ user, onLogout }) {
             ))}
           </div>
 
-          {/* 進度統計與快速列印入口 */}
+          {/* 進度統計與下一步簡短提醒 */}
           <div className="flex flex-wrap items-center gap-4 text-sm sm:text-base">
             <div className="flex items-center space-x-3">
               <span className="text-gray-800 font-bold">
@@ -680,21 +627,41 @@ window.JudgeView = function({ user, onLogout }) {
                 />
               </div>
             </div>
+            <span className="text-sm text-amber-900 font-bold bg-amber-50 px-3 py-1 rounded-lg border border-amber-200">
+              💡 全部評完後，請點選右上角「本組評分總表 (簽名單)」列印並簽名
+            </span>
+          </div>
+        </div>
+
+        {/* 2b. 當本組進度達 100% 時，自動顯示醒目的「完評下一步導引橫幅」 */}
+        {isGroupAllCompleted && (
+          <div className="mx-4 mt-4 p-4 sm:p-5 bg-emerald-50 border-2 border-emerald-500 rounded-2xl shadow-sm flex flex-col md:flex-row justify-between items-start md:items-center gap-4 max-w-[1760px] lg:mx-auto w-[calc(100%-2rem)]">
+            <div className="flex items-start space-x-3">
+              <span className="material-icons text-emerald-600 text-4xl shrink-0 mt-0.5">task_alt</span>
+              <div className="space-y-1">
+                <h3 className="text-lg sm:text-xl font-black text-emerald-950">
+                  🎉 恭喜！您已完成【{selectedGroup}】全數 {filteredTeams.length} 支隊伍的評分！
+                </h3>
+                <p className="text-sm sm:text-base text-emerald-900 font-bold leading-relaxed">
+                  👉 下一步操作指引：(1) 點擊右側或頂部「<strong>本組評分總表 (簽名單)</strong>」核對分數與名次 ➔ (2) 點選「<strong>列印 / 另存為 PDF</strong>」或「<strong>開啟 Google 試算表</strong>」印出紙本 ➔ (3) 於表格最下方「<strong>請評審委員在分數下方簽名</strong>」處親筆簽名後交予工作人員，即完成評審作業！
+                </p>
+              </div>
+            </div>
             <button
               type="button"
               onClick={() => setPrintSheetOpen(true)}
-              className="px-3.5 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-900 border border-emerald-300 rounded-xl text-sm font-black flex items-center transition cursor-pointer"
+              className="px-6 py-3 bg-emerald-700 hover:bg-emerald-800 text-white rounded-xl text-base font-black flex items-center shadow-md shrink-0 transition cursor-pointer"
             >
-              <span className="material-icons text-base mr-1">table_view</span>
-              預覽/列印本組總表 ↗
+              <span className="material-icons text-xl mr-2">print</span>
+              立即開啟本組評分總表進行列印簽名
             </button>
           </div>
-        </div>
+        )}
 
         {/* 3. 主工作台：左右雙欄 Split-Screen */}
         <div className="flex-1 flex flex-col lg:flex-row overflow-hidden p-4 gap-5 max-w-[1760px] w-full mx-auto">
           
-          {/* 左側欄：隊伍清單與即時序位 (根據字級自動拓寬並放大字體) */}
+          {/* 左側欄：隊伍清單與即時序位 */}
           <div className={`${uiScale.sidebarWidth} bg-white rounded-xl border shadow-xs flex flex-col overflow-hidden shrink-0 transition-all duration-200`}>
             <div className="p-4 bg-amber-50/70 border-b flex justify-between items-center">
               <span className={`${uiScale.sidebarHeader} font-black text-amber-950`}>
@@ -738,7 +705,7 @@ window.JudgeView = function({ user, onLogout }) {
                           </span>
                         </div>
 
-                        {/* 第二行：作品標題 (支援雙行完整顯示，不輕易截斷) */}
+                        {/* 第二行：作品標題 */}
                         <p className={`font-black ${uiScale.teamTitle} text-gray-950 line-clamp-2 pt-0.5`}>
                           {team.work_title || team.Work_Title}
                         </p>
@@ -897,7 +864,7 @@ window.JudgeView = function({ user, onLogout }) {
                   )}
                 </div>
 
-                {/* 影片播放區：雙重保險 (大按鈕外連 + 內嵌播放視窗) */}
+                {/* 影片播放區：雙重保險 */}
                 <div className="pt-2 space-y-3">
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 bg-red-50/70 p-4 rounded-xl border border-red-200">
                     <div className="flex items-center space-x-2.5">
@@ -1096,7 +1063,7 @@ window.JudgeView = function({ user, onLogout }) {
 
                 {/* 底部提交操作列 */}
                 <div className="pt-4 border-t flex flex-col sm:flex-row justify-between items-center gap-4">
-                  <div className="text-base">
+                  <div className="text-base space-y-1">
                     {currentScore.status === 'saved' ? (
                       <span className="text-emerald-800 font-bold flex items-center">
                         🟢 此隊伍分數已安全儲存於雲端試算表 (總分：{calculateTotal(currentScore)} 分)
@@ -1106,30 +1073,22 @@ window.JudgeView = function({ user, onLogout }) {
                         🟡 您已調整評分 (已自動暫存於本機)，請點擊右側按鈕正式寫入雲端試算表！
                       </span>
                     )}
+                    <div className="text-sm text-gray-600 font-medium">
+                      📌 評審完本組全部隊伍後，請點選網頁最上方「<strong>本組評分總表 (簽名單)</strong>」進行列印與簽名。
+                    </div>
                   </div>
 
-                  <div className="flex flex-wrap items-center gap-3 w-full sm:w-auto justify-end">
-                    <button
-                      type="button"
-                      onClick={() => setPrintSheetOpen(true)}
-                      className="px-5 py-3.5 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white font-black text-base shadow-md transition flex items-center justify-center cursor-pointer"
-                    >
-                      <span className="material-icons text-xl mr-1.5">print</span>
-                      檢視/列印本組評分表
-                    </button>
-
-                    <button
-                      onClick={() => handleSubmitScore(false)}
-                      disabled={saving}
-                      className="px-8 py-3.5 rounded-xl text-white font-black text-base sm:text-lg shadow-lg hover:opacity-95 transition flex items-center justify-center cursor-pointer"
-                      style={{ backgroundColor: 'var(--secondary)' }}
-                    >
-                      <span className={`material-icons text-xl mr-2 ${saving ? 'animate-spin' : ''}`}>
-                        {saving ? 'sync' : 'cloud_upload'}
-                      </span>
-                      {saving ? '正在寫入雲端試算表...' : '儲存並提交本隊評分'}
-                    </button>
-                  </div>
+                  <button
+                    onClick={() => handleSubmitScore(false)}
+                    disabled={saving}
+                    className="w-full sm:w-auto px-8 py-3.5 rounded-xl text-white font-black text-base sm:text-lg shadow-lg hover:opacity-95 transition flex items-center justify-center cursor-pointer shrink-0"
+                    style={{ backgroundColor: 'var(--secondary)' }}
+                  >
+                    <span className={`material-icons text-xl mr-2 ${saving ? 'animate-spin' : ''}`}>
+                      {saving ? 'sync' : 'cloud_upload'}
+                    </span>
+                    {saving ? '正在寫入雲端試算表...' : '儲存並提交本隊評分'}
+                  </button>
                 </div>
               </div>
 
@@ -1253,7 +1212,7 @@ window.JudgeView = function({ user, onLogout }) {
       )}
 
       {/* =========================================================
-          5. 本組評分清冊與簽名表 Modal (支援 A4 橫式跨頁列印 & Excel 下載)
+          5. 本組評分總表 (簽名單) Modal (支援 A4 橫式跨頁列印 & 雲端 Google 試算表)
          ========================================================= */}
       {printSheetOpen && (
         <div className="print-sheet-modal-backdrop fixed inset-0 bg-black/75 z-50 overflow-y-auto p-4 sm:p-6 flex justify-center items-start">
@@ -1264,21 +1223,24 @@ window.JudgeView = function({ user, onLogout }) {
               <div>
                 <h2 className="text-lg sm:text-xl font-black flex items-center">
                   <span className="material-icons text-amber-400 mr-2">assignment_turned_in</span>
-                  【{selectedGroup}】評審評分總表預覽與列印（含簽名處）
+                  【{selectedGroup}】評審評分總表與簽名單
                 </h2>
                 <p className="text-xs sm:text-sm text-amber-200 mt-0.5">
-                  💡 列印小叮嚀：點擊「列印 / 存為 PDF」時，請選擇<strong>「橫向 (Landscape)」</strong>並勾選<strong>「背景圖形」</strong>，跨頁時表頭將自動重複印出！
+                  💡 列印說明：點擊「列印 / 另存為 PDF」時，請確認方向為<strong>「橫向 (Landscape)」</strong>並勾選<strong>「背景圖形」</strong>；列印後請於最下方簽名處簽名。
                 </p>
               </div>
 
               <div className="flex flex-wrap items-center gap-2.5 shrink-0">
                 <button
                   type="button"
-                  onClick={handleExportGroupExcel}
+                  onClick={handleOpenGoogleSheet}
+                  disabled={exportingSheet}
                   className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-sm font-black flex items-center shadow-sm transition cursor-pointer"
                 >
-                  <span className="material-icons text-base mr-1.5">download</span>
-                  📥 下載 Excel (.xlsx)
+                  <span className={`material-icons text-base mr-1.5 ${exportingSheet ? 'animate-spin' : ''}`}>
+                    {exportingSheet ? 'sync' : 'table_chart'}
+                  </span>
+                  {exportingSheet ? '正在建立 Google 試算表...' : '產生並開啟 Google 試算表 ↗'}
                 </button>
 
                 <button
@@ -1287,7 +1249,7 @@ window.JudgeView = function({ user, onLogout }) {
                   className="px-5 py-2.5 bg-amber-400 hover:bg-amber-300 text-amber-950 rounded-xl text-sm font-black flex items-center shadow-sm transition cursor-pointer"
                 >
                   <span className="material-icons text-base mr-1.5">print</span>
-                  🖨️ 列印 / 另存為 PDF (A4 橫式)
+                  列印 / 另存為 PDF (A4 橫式)
                 </button>
 
                 <button
