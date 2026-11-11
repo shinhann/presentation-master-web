@@ -11,6 +11,7 @@ window.AdminTeamsView = function() {
   const [statusMsg, setStatusMsg] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedGroupFilter, setSelectedGroupFilter] = useState('');
+  const [submissionFilter, setSubmissionFilter] = useState('all'); // 'all' | 'submitted' | 'unsubmitted'
   const [expandedDescriptions, setExpandedDescriptions] = useState({}); // { [teamId]: true/false }
 
   useEffect(() => {
@@ -98,14 +99,36 @@ window.AdminTeamsView = function() {
     reader.readAsBinaryString(file);
   };
 
+  // 判定是否為「已繳件」（只要有簡報檔或影片檔其一，即為已繳件）
+  const checkIsSubmitted = (t) => {
+    const slides = (t.slides_link || t.Slides_Link || '').trim();
+    const video = (t.video_link || t.Video_Link || '').trim();
+    return !!(slides || video);
+  };
+
   const filteredTeams = teams.filter(t => {
     const title = t.work_title || t.Work_Title || '';
     const school = t.school || t.School || '';
     const cat = t.category || t.Category || t.group_name || t.Group_Name || '';
     const matchesSearch = title.includes(searchQuery) || school.includes(searchQuery);
     const matchesGroup = !selectedGroupFilter || cat === selectedGroupFilter;
-    return matchesSearch && matchesGroup;
+
+    const isSub = checkIsSubmitted(t);
+    let matchesSubmission = true;
+    if (submissionFilter === 'submitted') matchesSubmission = isSub;
+    if (submissionFilter === 'unsubmitted') matchesSubmission = !isSub;
+
+    return matchesSearch && matchesGroup && matchesSubmission;
   });
+
+  // 計算目前已選分組下的總隊數、已繳件隊數、未繳件隊數
+  const currentGroupTeams = teams.filter(t => {
+    const cat = t.category || t.Category || t.group_name || t.Group_Name || '';
+    return !selectedGroupFilter || cat === selectedGroupFilter;
+  });
+  const totalInCurrentGroup = currentGroupTeams.length;
+  const submittedInCurrentGroup = currentGroupTeams.filter(checkIsSubmitted).length;
+  const unsubmittedInCurrentGroup = totalInCurrentGroup - submittedInCurrentGroup;
 
   return (
     <div className="space-y-4">
@@ -136,7 +159,7 @@ window.AdminTeamsView = function() {
       )}
 
       {/* 搜尋與篩選 */}
-      <div className="bg-white p-3 rounded-xl border flex flex-col md:flex-row gap-3">
+      <div className="bg-white p-3 rounded-xl border flex flex-col md:flex-row gap-3 items-stretch md:items-center">
         <input
           type="text"
           placeholder="搜尋學校或作品名稱..."
@@ -154,6 +177,43 @@ window.AdminTeamsView = function() {
             <option key={c} value={c}>{c}</option>
           ))}
         </select>
+
+        {/* 已繳件 / 未繳件切換按鈕 */}
+        <div className="flex items-center bg-gray-100 p-1 rounded-lg border border-gray-200">
+          <button
+            type="button"
+            onClick={() => setSubmissionFilter('all')}
+            className={`px-3 py-1 text-xs rounded-md font-bold transition ${
+              submissionFilter === 'all'
+                ? 'bg-white text-gray-800 shadow-xs'
+                : 'text-gray-500 hover:text-gray-800'
+            }`}
+          >
+            全部 ({totalInCurrentGroup})
+          </button>
+          <button
+            type="button"
+            onClick={() => setSubmissionFilter('submitted')}
+            className={`px-3 py-1 text-xs rounded-md font-bold transition flex items-center ${
+              submissionFilter === 'submitted'
+                ? 'bg-emerald-700 text-white shadow-xs'
+                : 'text-emerald-700 hover:bg-emerald-50'
+            }`}
+          >
+            🟢 已繳件 ({submittedInCurrentGroup})
+          </button>
+          <button
+            type="button"
+            onClick={() => setSubmissionFilter('unsubmitted')}
+            className={`px-3 py-1 text-xs rounded-md font-bold transition flex items-center ${
+              submissionFilter === 'unsubmitted'
+                ? 'bg-amber-800 text-white shadow-xs'
+                : 'text-gray-600 hover:bg-gray-200'
+            }`}
+          >
+            ⚪ 未繳件 ({unsubmittedInCurrentGroup})
+          </button>
+        </div>
       </div>
 
       {/* 隊伍表格 */}
@@ -167,13 +227,14 @@ window.AdminTeamsView = function() {
               <th className="p-3 min-w-[220px]">作品名稱與說明</th>
               <th className="p-3 min-w-[240px]">成員與指導教師</th>
               <th className="p-3 min-w-[220px]">115 檔案繳件連結</th>
+              <th className="p-3 w-24 text-center">狀態</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
             {loading ? (
-              <tr><td colSpan="6" className="p-6 text-center text-gray-400">載入中...</td></tr>
+              <tr><td colSpan="7" className="p-6 text-center text-gray-400">載入中...</td></tr>
             ) : filteredTeams.length === 0 ? (
-              <tr><td colSpan="6" className="p-6 text-center text-gray-400">尚無隊伍資料</td></tr>
+              <tr><td colSpan="7" className="p-6 text-center text-gray-400">尚無隊伍資料</td></tr>
             ) : (
               filteredTeams.map((t, idx) => {
                 const teamKey = t.team_id || t.Team_ID || idx;
@@ -348,6 +409,19 @@ window.AdminTeamsView = function() {
                           )
                         )}
                       </div>
+                    </td>
+
+                    {/* 繳件狀態標記 */}
+                    <td className="p-3 text-center align-middle">
+                      {checkIsSubmitted(t) ? (
+                        <span className="inline-block px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-100 text-emerald-800 border border-emerald-300">
+                          已繳件
+                        </span>
+                      ) : (
+                        <span className="inline-block px-2.5 py-1 rounded-full text-xs font-bold bg-gray-100 text-gray-500 border border-gray-300" title="無簡報檔與影片檔">
+                          未繳件
+                        </span>
+                      )}
                     </td>
                   </tr>
                 );

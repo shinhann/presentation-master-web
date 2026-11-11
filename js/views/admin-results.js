@@ -220,10 +220,15 @@ window.AdminResultsView = function() {
   }, [judges, selectedCategory]);
 
   // 2. 篩選該組別之參賽隊伍並計算每位評審組內序位、平均總分、序位法總分與排名
+  // (自動排除「未繳件」隊伍：無簡報連結且無影片連結者視為未繳件，不列入總表與 1/3 名額計算)
   const processedGroupData = useMemo(() => {
     const groupTeams = teams.filter(t => {
       const cat = String(t.category || t.Category || t.group_name || t.Group_Name || '').trim();
-      return cat === selectedCategory;
+      const matchesCat = cat === selectedCategory;
+      const slides = (t.slides_link || t.Slides_Link || '').trim();
+      const video = (t.video_link || t.Video_Link || '').trim();
+      const isSubmitted = !!(slides || video);
+      return matchesCat && isSubmitted;
     });
 
     const judgeRankMap = {};
@@ -616,10 +621,11 @@ window.AdminResultsView = function() {
               className="bg-white border border-amber-400 text-amber-950 font-black text-base rounded-md px-3 py-1 focus:outline-none focus:ring-2 focus:ring-amber-600 cursor-pointer"
             >
               {CATEGORIES.map(c => {
-                const count = teams.filter(t => String(t.category || t.Category || t.group_name || t.Group_Name) === c).length;
+                const cTeams = teams.filter(t => String(t.category || t.Category || t.group_name || t.Group_Name) === c);
+                const subCount = cTeams.filter(t => (t.slides_link || t.Slides_Link || '').trim() || (t.video_link || t.Video_Link || '').trim()).length;
                 return (
                   <option key={c} value={c}>
-                    {c}（{count} 隊）
+                    {c}（已繳件 {subCount} 隊 / 報名 {cTeams.length} 隊）
                   </option>
                 );
               })}
@@ -694,8 +700,9 @@ window.AdminResultsView = function() {
         {CATEGORIES.map(c => {
           const isSelected = selectedCategory === c;
           const cTeams = teams.filter(t => String(t.category || t.Category || t.group_name || t.Group_Name) === c);
-          const savedInCat = cTeams.filter(t => decisionsMap[String(t.team_id || t.Team_ID)]?.saved).length;
-          const isCatSaved = cTeams.length > 0 && savedInCat === cTeams.length;
+          const cSubmitted = cTeams.filter(t => (t.slides_link || t.Slides_Link || '').trim() || (t.video_link || t.Video_Link || '').trim());
+          const savedInCat = cSubmitted.filter(t => decisionsMap[String(t.team_id || t.Team_ID)]?.saved).length;
+          const isCatSaved = cSubmitted.length > 0 && savedInCat === cSubmitted.length;
           return (
             <button
               key={c}
@@ -710,7 +717,7 @@ window.AdminResultsView = function() {
               <span className={`px-2 py-0.5 rounded-full text-xs ${
                 isSelected ? 'bg-amber-700 text-amber-100' : 'bg-gray-100 text-gray-600'
               }`}>
-                {cTeams.length}隊
+                {cSubmitted.length} 隊參賽
               </span>
               {isCatSaved && (
                 <span className="text-emerald-400" title="此組別已儲存得獎名單">✔</span>
@@ -746,7 +753,7 @@ window.AdminResultsView = function() {
                 : 'bg-white border-amber-300 text-gray-900'
             }`}>
               <div className="text-sm font-black">
-                本組共 <span className="text-lg text-amber-900 underline">{quotaStats.totalTeams}</span> 隊
+                本組實際參賽共 <span className="text-lg text-amber-900 underline">{quotaStats.totalTeams}</span> 隊
                 ➔ 三分之一名額上限（特優＋優等）：
                 <span className="inline-block bg-amber-900 text-white px-2.5 py-0.5 rounded-md text-base font-black ml-1">
                   {quotaStats.quotaLimit} 隊

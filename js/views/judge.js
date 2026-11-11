@@ -161,7 +161,12 @@ window.JudgeView = function({ user, onLogout }) {
       if (teamsRes.status === 'success' && Array.isArray(teamsRes.data)) {
         authorizedTeams = teamsRes.data.filter(t => {
           const cat = String(t.category || t.Category || t.group_name || t.Group_Name || '').trim();
-          return allowedGroupList.some(allowed => cat === allowed || cat.includes(allowed) || allowed.includes(cat));
+          const matchesCategory = allowedGroupList.some(allowed => cat === allowed || cat.includes(allowed) || allowed.includes(cat));
+          // 評審端自動過濾：無簡報且無影片者判定為「未繳件」，不列入評審打分
+          const slides = (t.slides_link || t.Slides_Link || '').trim();
+          const video = (t.video_link || t.Video_Link || '').trim();
+          const isSubmitted = !!(slides || video);
+          return matchesCategory && isSubmitted;
         });
         setTeams(authorizedTeams);
       }
