@@ -692,22 +692,21 @@ function processExportGroupSummarySheet(ss, payload) {
     }
   });
 
-  // 4. 最末列：「以下空白」防竄改列 (比照去年總表：標題=以下空白、評審=N+1、序位總分=(N+1)*3、排名=N+1)
-  const nPlusOne = rows.length + 1;
+  // 4. 最末列：「以下空白」防竄改列 (標題=以下空白，其餘欄位統一顯示橫槓 —)
   const blankRowIdx = startDataRow + rows.length;
   const blankValues = [
     '以下空白',
-    nPlusOne,
-    nPlusOne,
-    nPlusOne,
     '—',
-    nPlusOne * 3,
-    nPlusOne,
-    '',
-    '',
-    '',
-    '',
-    ''
+    '—',
+    '—',
+    '—',
+    '—',
+    '—',
+    '—',
+    '—',
+    '—',
+    '—',
+    '—'
   ];
 
   targetSheet.getRange(blankRowIdx, 1, 1, totalCols)

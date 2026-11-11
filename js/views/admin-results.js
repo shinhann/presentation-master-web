@@ -596,7 +596,6 @@ window.AdminResultsView = function() {
   };
 
   const fullCategoryHeading = `${CATEGORY_FULL_TITLE_MAP[selectedCategory] || `【${selectedCategory}】`}評分總表`;
-  const nPlusOne = processedGroupData.length + 1;
 
   return (
     <div className="space-y-4">
@@ -721,7 +720,7 @@ window.AdminResultsView = function() {
         })}
       </div>
 
-      {/* ==================== 共識會議名額與評審完評狀態儀表板 ==================== */}
+      {/* ==================== 共識會議名額與評審完評狀態儀表板 (評審匿名只顯示代號) ==================== */}
       <div className="no-print bg-amber-50/90 border-2 border-amber-300 rounded-xl p-4 shadow-sm space-y-3">
         <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
           <div className="flex flex-wrap items-center gap-3">
@@ -736,7 +735,7 @@ window.AdminResultsView = function() {
                       : 'bg-amber-100 text-amber-900 border border-amber-400'
                   }`}
                 >
-                  {jp.isComplete ? '🟢' : '🟡'} 評審{jp.code} ({jp.name})：{jp.scored}/{jp.total}
+                  {jp.isComplete ? '🟢' : '🟡'} 評審{jp.code}：{jp.scored}/{jp.total}
                 </span>
               ))}
             </div>
@@ -802,7 +801,7 @@ window.AdminResultsView = function() {
           </div>
         </div>
 
-        {/* 狀態提醒與操作按鈕列 (去重圖示、去 Excel 按鈕、強化本機暫存提示) */}
+        {/* 狀態提醒與操作按鈕列 */}
         <div className="pt-2 border-t border-amber-200/80 flex flex-col md:flex-row justify-between items-start md:items-center gap-3">
           <div className="flex items-center space-x-2">
             {hasUnsavedChanges ? (
@@ -857,20 +856,34 @@ window.AdminResultsView = function() {
       </div>
 
       {/* ==================== 評分總表主體 ==================== */}
-      <div className="bg-white rounded-xl border-2 border-gray-800 shadow-md overflow-x-auto p-2 md:p-4">
-        {/* 總表頂部大標題：只保留組別評分總表，去除重複小標題與會議紀錄表字眼 */}
-        <div className="mb-3 border-b-2 border-black pb-2">
+      <div className="consensus-print-container bg-white rounded-xl border-2 border-gray-800 shadow-md overflow-x-auto p-2 md:p-4">
+        <div className="consensus-print-title mb-3 border-b-2 border-black pb-2">
           <h2 className="text-2xl md:text-3xl font-black text-black tracking-tight">
             {fullCategoryHeading}
           </h2>
         </div>
 
+        {/* 12欄總和嚴格控制在 100%，確保螢幕與 A4 列印右側兩欄絕不被擠壓 */}
         <table className="w-full border-collapse judge-print-table text-black" style={{ border: '2px solid #000' }}>
+          <colgroup>
+            <col style={{ width: '15%' }} />
+            <col style={{ width: '5.5%' }} />
+            <col style={{ width: '5.5%' }} />
+            <col style={{ width: '5.5%' }} />
+            <col style={{ width: '5.5%' }} />
+            <col style={{ width: '5.5%' }} />
+            <col style={{ width: '4%' }} />
+            <col style={{ width: '11%' }} />
+            <col style={{ width: '11%' }} />
+            <col style={{ width: '11%' }} />
+            <col style={{ width: '11%' }} />
+            <col style={{ width: '9.5%' }} />
+          </colgroup>
           <thead>
             <tr className={`${fontStyles.tableHeader} font-black text-center print-text-base`}>
               <th
                 className="p-2 border border-black"
-                style={{ backgroundColor: '#F9EBC8', width: '18%' }}
+                style={{ backgroundColor: '#F9EBC8' }}
               >
                 標題
               </th>
@@ -878,27 +891,26 @@ window.AdminResultsView = function() {
                 <th
                   key={j.code}
                   className="p-1.5 border border-black"
-                  style={{ backgroundColor: '#F9EBC8', width: '7%' }}
+                  style={{ backgroundColor: '#F9EBC8' }}
                 >
-                  <div>評審{j.code}</div>
-                  <div className="text-xs font-bold text-gray-700 no-print">({j.name})</div>
+                  評審{j.code}
                 </th>
               ))}
               <th
                 className="p-1.5 border border-black"
-                style={{ backgroundColor: '#DCE6F1', width: '6%' }}
+                style={{ backgroundColor: '#DCE6F1' }}
               >
                 平均<br />總分
               </th>
               <th
                 className="p-1.5 border border-black"
-                style={{ backgroundColor: '#F2F2F2', width: '6%' }}
+                style={{ backgroundColor: '#F2F2F2' }}
               >
                 序位法<br />總分
               </th>
               <th
                 className="p-1.5 border border-black"
-                style={{ backgroundColor: '#D7BDE2', width: '4.5%' }}
+                style={{ backgroundColor: '#D7BDE2' }}
               >
                 排名
               </th>
@@ -906,20 +918,20 @@ window.AdminResultsView = function() {
                 <th
                   key={`comment-${j.code}`}
                   className="p-2 border border-black"
-                  style={{ backgroundColor: '#F5D6D6', width: '13%' }}
+                  style={{ backgroundColor: '#F5D6D6' }}
                 >
                   {j.code}評語
                 </th>
               ))}
               <th
-                className="p-1.5 border border-black"
-                style={{ backgroundColor: '#F5D6D6', width: '8%' }}
+                className="p-1.5 border border-black min-w-[138px]"
+                style={{ backgroundColor: '#F5D6D6' }}
               >
                 特色表現獎
               </th>
               <th
-                className="p-1.5 border border-black"
-                style={{ backgroundColor: '#F5D6D6', width: '7.5%' }}
+                className="p-1.5 border border-black min-w-[115px]"
+                style={{ backgroundColor: '#F5D6D6' }}
               >
                 特色優選獎
               </th>
@@ -949,7 +961,7 @@ window.AdminResultsView = function() {
                     key={item.team_id}
                     className="border-b border-black hover:bg-amber-50/40 transition"
                   >
-                    {/* 1. 標題 + 純圖示按鈕 (拿掉文字) */}
+                    {/* 1. 標題 + 純圖示按鈕 */}
                     <td className="p-2 border border-black align-middle text-center">
                       <div className={`${fontStyles.workTitle} text-gray-950 mb-0.5 print-text-base`}>
                         {item.work_title || '（未填作品名稱）'}
@@ -1076,7 +1088,7 @@ window.AdminResultsView = function() {
                       )}
                     </td>
 
-                    {/* 6. 序位法總分 (只呈現一個乾淨加總數字，拿掉「(序位排第X)」) */}
+                    {/* 6. 序位法總分 */}
                     <td className="p-1.5 border border-black text-center align-middle">
                       {item.rank_sum !== null ? (
                         <div>
@@ -1136,13 +1148,13 @@ window.AdminResultsView = function() {
                       </td>
                     ))}
 
-                    {/* 11. 特色表現獎 */}
-                    <td className="p-1.5 border border-black text-center align-middle">
-                      <div className="no-print space-y-1">
+                    {/* 11. 特色表現獎 (保證寬度充足，文字完整呈現) */}
+                    <td className="p-1.5 border border-black text-center align-middle min-w-[138px]">
+                      <div className="no-print">
                         <select
                           value={dec.feature_award || ''}
                           onChange={(e) => handleDecisionChange(item.team_id, 'feature_award', e.target.value)}
-                          className={`w-full rounded-lg font-black border cursor-pointer transition focus:outline-none ${fontStyles.selectText} ${
+                          className={`w-full min-w-[124px] rounded-lg font-black border-2 cursor-pointer transition focus:outline-none text-center ${fontStyles.selectText} ${
                             dec.feature_award === '簡報之星'
                               ? 'bg-teal-100 text-teal-950 border-teal-500'
                               : dec.feature_award === '學習之星'
@@ -1156,18 +1168,18 @@ window.AdminResultsView = function() {
                         </select>
                       </div>
 
-                      <span className="only-print-inline print-text-base font-black">
+                      <span className="only-print-inline print-text-base font-black whitespace-nowrap">
                         {dec.feature_award || ''}
                       </span>
                     </td>
 
-                    {/* 12. 特色優選獎 */}
-                    <td className="p-1.5 border border-black text-center align-middle">
-                      <div className="no-print space-y-1">
+                    {/* 12. 特色優選獎 (保證寬度充足，文字完整呈現) */}
+                    <td className="p-1.5 border border-black text-center align-middle min-w-[115px]">
+                      <div className="no-print">
                         <select
                           value={dec.rank_award || ''}
                           onChange={(e) => handleDecisionChange(item.team_id, 'rank_award', e.target.value)}
-                          className={`w-full rounded-lg font-black border cursor-pointer transition focus:outline-none ${fontStyles.selectText} ${
+                          className={`w-full min-w-[100px] rounded-lg font-black border-2 cursor-pointer transition focus:outline-none text-center ${fontStyles.selectText} ${
                             dec.rank_award === '特優'
                               ? 'bg-yellow-300 text-yellow-950 border-yellow-600'
                               : dec.rank_award === '優等'
@@ -1181,7 +1193,7 @@ window.AdminResultsView = function() {
                         </select>
                       </div>
 
-                      <span className="only-print-inline print-text-base font-black">
+                      <span className="only-print-inline print-text-base font-black whitespace-nowrap">
                         {dec.rank_award || ''}
                       </span>
                     </td>
@@ -1190,35 +1202,23 @@ window.AdminResultsView = function() {
               })
             )}
 
-            {/* 以下空白列 */}
+            {/* 以下空白列：第一格為「以下空白」，後面 11 格統一為一條橫槓「—」 */}
             {!loading && processedGroupData.length > 0 && (
               <tr className="border-t-2 border-black font-black text-center bg-white print-text-base">
-                <td className={`p-2 border border-black ${fontStyles.workTitle}`}>
+                <td className={`p-2 border border-black ${fontStyles.workTitle} print-text-base`}>
                   以下空白
                 </td>
-                <td className={`p-1.5 border border-black ${fontStyles.scoreMain}`}>
-                  {nPlusOne}
-                </td>
-                <td className={`p-1.5 border border-black ${fontStyles.scoreMain}`}>
-                  {nPlusOne}
-                </td>
-                <td className={`p-1.5 border border-black ${fontStyles.scoreMain}`}>
-                  {nPlusOne}
-                </td>
-                <td className={`p-1.5 border border-black ${fontStyles.scoreMain}`}>
-                  —
-                </td>
-                <td className={`p-1.5 border border-black ${fontStyles.scoreMain}`}>
-                  {nPlusOne * 3}
-                </td>
-                <td className={`p-1.5 border border-black ${fontStyles.scoreMain}`}>
-                  {nPlusOne}
-                </td>
-                <td className="p-1.5 border border-black"></td>
-                <td className="p-1.5 border border-black"></td>
-                <td className="p-1.5 border border-black"></td>
-                <td className="p-1.5 border border-black"></td>
-                <td className="p-1.5 border border-black"></td>
+                <td className="p-1.5 border border-black text-gray-700">—</td>
+                <td className="p-1.5 border border-black text-gray-700">—</td>
+                <td className="p-1.5 border border-black text-gray-700">—</td>
+                <td className="p-1.5 border border-black text-gray-700">—</td>
+                <td className="p-1.5 border border-black text-gray-700">—</td>
+                <td className="p-1.5 border border-black text-gray-700">—</td>
+                <td className="p-1.5 border border-black text-gray-700">—</td>
+                <td className="p-1.5 border border-black text-gray-700">—</td>
+                <td className="p-1.5 border border-black text-gray-700">—</td>
+                <td className="p-1.5 border border-black text-gray-700">—</td>
+                <td className="p-1.5 border border-black text-gray-700">—</td>
               </tr>
             )}
           </tbody>

@@ -121,13 +121,19 @@ input[type=range] {
    ========================================================= */
 @page {
   size: A4 landscape;
-  margin: 10mm 8mm;
+  margin: 7mm 6mm;
 }
 
 @media print {
+  *, *::before, *::after {
+    box-sizing: border-box !important;
+  }
+
   html, body, #root {
     background: #FFFFFF !important;
     color: #000000 !important;
+    width: 100% !important;
+    max-width: 100% !important;
     height: auto !important;
     min-height: 0 !important;
     overflow: visible !important;
@@ -135,6 +141,32 @@ input[type=range] {
     padding: 0 !important;
     -webkit-print-color-adjust: exact !important;
     print-color-adjust: exact !important;
+  }
+
+  main {
+    padding: 0 !important;
+    margin: 0 !important;
+    max-width: 100% !important;
+    width: 100% !important;
+  }
+
+  /* 移除外層卡片在列印時的邊框、圓角與內距，防止擠壓表格寬度 */
+  .consensus-print-container {
+    border: none !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    overflow: visible !important;
+  }
+
+  .consensus-print-title {
+    font-size: 13pt !important;
+    line-height: 1.2 !important;
+    margin-bottom: 4px !important;
+    padding-bottom: 3px !important;
   }
 
   /* 隱藏所有非列印區的網頁元件 */
@@ -154,12 +186,13 @@ input[type=range] {
   /* 評審評分總表專屬 A4 橫式完全縮版排版 (防溢出) */
   table.judge-print-table {
     width: 100% !important;
+    max-width: 100% !important;
     table-layout: fixed !important;
     border-collapse: collapse !important;
     border: 1.5px solid #000000 !important;
     page-break-inside: auto !important;
-    font-size: 9pt !important;
-    line-height: 1.25 !important;
+    font-size: 8.5pt !important;
+    line-height: 1.2 !important;
   }
 
   table.judge-print-table thead {
@@ -179,21 +212,25 @@ input[type=range] {
   table.judge-print-table td {
     border: 1px solid #222222 !important;
     color: #000000 !important;
-    padding: 4px 3px !important;
+    padding: 3px 3px !important;
     min-width: 0 !important;
     word-break: break-word !important;
+    overflow-wrap: break-word !important;
   }
 
   table.judge-print-table .print-text-sm {
-    font-size: 8.5pt !important;
+    font-size: 8pt !important;
+    line-height: 1.15 !important;
   }
 
   table.judge-print-table .print-text-base {
-    font-size: 9.5pt !important;
+    font-size: 9pt !important;
+    line-height: 1.2 !important;
   }
 
   table.judge-print-table .print-text-lg {
-    font-size: 10pt !important;
+    font-size: 9.5pt !important;
+    line-height: 1.2 !important;
   }
 
   /* 簽名欄防跨頁切斷 */
