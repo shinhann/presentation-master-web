@@ -1,12 +1,14 @@
 /**
  * 簡報達人評分系統 115學年度 - 共識會議決審與成績總表模組 (js/views/admin-results.js)
- * 核心功能：
- * 1. [ ᴀ 小 ] [ A 中 ] [ 𝐀 大 ] 三段式投影友善字級切換（預設「大」22px~28px+）
- * 2. 右上角「📋 對照評分規準」抽屜（內建 115 四大配分規準表 + 外部規準/簡章連結）
- * 3. 六大組別一鍵切換（頁籤 + 下拉選單）與三位評審完評狀態檢查
- * 4. 三分之一名額自動試算儀表板（ceil(N/3)）與「🪄 帶入系統建議」四層金字塔邏輯
- * 5. 比照去年標準《評分總表》視覺排版：標題（附簡報/影片/心智圖/校訂課程秒開按鈕）、三位評審（總分+序位+四項細分）、平均總分、序位法總分、排名（得獎亮黃底 #FFF200）、三位評審完整評語（免懸停直接顯示+評審推薦標籤）、特色表現獎下拉選單、特色優選獎下拉選單、底部「以下空白」防竄改列
- * 6. 儲存決審結果至後端 Final_Results、產生雲端獨立 Google 試算表總表、下載 Excel (.xlsx)、A4 橫向列印（無簽核欄，供公文附件簽核）
+ * v76.7-115 優化更新：
+ * 1. 簡報/影片/心智圖/校訂課程：純圖示按鈕 (拿掉文字，滑鼠懸停顯示 tooltip)
+ * 2. 評審給分細項 (內/表/台/技)：改為滑鼠懸停浮動卡片呈現，平時只清爽顯示總分與序位
+ * 3. 序位法總分：移除「(序位排第X)」贅字，純粹呈現加總數字
+ * 4. 按鈕圖示去重：移除雙重 emoji/icon，並移除「下載 .xlsx」按鈕
+ * 5. 本機 LocalStorage 自動暫存 + 未存雲端警示提醒 + beforeunload 攔截
+ * 6. 移除「晉級原則」文字標註 (改由評審現場口頭說明)
+ * 7. 移除右上角重複小標題與「決審共識會議紀錄表」字樣
+ * 8. 列印樣式深度優化：table-layout: fixed + 字級自動縮版，100% 完整容納於 A4 橫向無溢出
  */
 
 window.AdminResultsView = function() {
@@ -18,7 +20,7 @@ window.AdminResultsView = function() {
     '校訂課程國中組', '校訂課程國小組'
   ];
 
-  // 組別正式全銜對照表（比照去年列印總表頂部大標題）
+  // 組別正式全銜對照表
   const CATEGORY_FULL_TITLE_MAP = {
     '宜蘭在地國中組': '【宜蘭在地自然人文特色—國中組】',
     '宜蘭在地國小組': '【宜蘭在地自然人文特色—國小組】',
@@ -28,7 +30,6 @@ window.AdminResultsView = function() {
     '校訂課程國小組': '【學校校訂課程—國小組】'
   };
 
-  // 預設組別與評審代號對照保底
   const DEFAULT_CATEGORY_JUDGES = {
     '宜蘭在地國中組': ['A', 'B', 'C'],
     '宜蘭在地國小組': ['A', 'B', 'C'],
@@ -43,10 +44,9 @@ window.AdminResultsView = function() {
   const [exportingSheet, setExportingSheet] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState(CATEGORIES[1] || '宜蘭在地國小組');
   const [sortMode, setSortMode] = useState('avg_desc'); // 'avg_desc' | 'rank_sum_asc' | 'team_seq'
-  const [showSubScores, setShowSubScores] = useState(true);
   const [showRubricDrawer, setShowRubricDrawer] = useState(false);
 
-  // 字體大小切換：'small' (小) | 'medium' (中) | 'large' (大，預設適合投影幕 22px+)
+  // 字體大小切換：'small' (小) | 'medium' (中) | 'large' (大，預設)
   const [fontScale, setFontScale] = useState(() => {
     return localStorage.getItem('admin_consensus_font_scale') || 'large';
   });
@@ -62,10 +62,22 @@ window.AdminResultsView = function() {
   const [scores, setScores] = useState([]);
   const [sysConfig, setSysConfig] = useState({});
 
-  // 決審獎項狀態 map: { [team_id]: { feature_award: '簡報之星'|'學習之星'|'', rank_award: '特優'|'優等'|'', saved: boolean } }
+  // 決審獎項狀態 map: { [team_id]: { feature_award: '', rank_award: '', saved: boolean } }
   const [decisionsMap, setDecisionsMap] = useState({});
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [lastSavedTime, setLastSavedTime] = useState('');
+
+  // 監聽 beforeunload，若有未存檔變更提醒使用者
+  useEffect(() => {
+    const handleBeforeUnload = (e) => {
+      if (hasUnsavedChanges) {
+        e.preventDefault();
+        e.returnValue = '尚有決審結果尚未儲存至雲端，確定要離開嗎？';
+      }
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [hasUnsavedChanges]);
 
   useEffect(() => {
     loadAllData();
@@ -84,27 +96,58 @@ window.AdminResultsView = function() {
       setScores(loadedScores);
       setSysConfig(res.data.config || {});
 
-      // 將已儲存於 Final_Results 的獎項回填至 decisionsMap
-      const initMap = {};
+      // 1. 先讀取雲端已存之 Final_Results
+      const cloudMap = {};
       loadedFinals.forEach(fr => {
         const tid = String(fr.team_id || '');
         if (tid) {
-          initMap[tid] = {
+          cloudMap[tid] = {
             feature_award: String(fr.feature_award || ''),
             rank_award: String(fr.rank_award || ''),
             saved: true
           };
         }
       });
-      setDecisionsMap(initMap);
-      setHasUnsavedChanges(false);
+
+      // 2. 比對本地 LocalStorage 是否有未寫入雲端之最新暫存
+      let localDraftMap = {};
+      try {
+        const cached = localStorage.getItem(`consensus_decisions_${window.APP_CONFIG.CURRENT_YEAR}`);
+        if (cached) {
+          localDraftMap = JSON.parse(cached);
+        }
+      } catch (e) {
+        console.warn('讀取本機決審暫存失敗', e);
+      }
+
+      // 合併：本地有未存草稿則優先保留，並提示未儲存
+      const finalCombined = { ...cloudMap };
+      let foundUnsavedDraft = false;
+      Object.keys(localDraftMap).forEach(tid => {
+        if (localDraftMap[tid] && !localDraftMap[tid].saved) {
+          finalCombined[tid] = { ...localDraftMap[tid] };
+          foundUnsavedDraft = true;
+        }
+      });
+
+      setDecisionsMap(finalCombined);
+      setHasUnsavedChanges(foundUnsavedDraft);
     } else {
       alert('讀取成績彙整資料失敗：' + (res.message || '未知錯誤'));
     }
     setLoading(false);
   };
 
-  // 字級樣式對應表（專為投影幕與會議審閱設計，大字級達 22px ~ 28px+）
+  // 本機自動暫存輔助函式
+  const saveToLocalDraft = (newMap) => {
+    try {
+      localStorage.setItem(`consensus_decisions_${window.APP_CONFIG.CURRENT_YEAR}`, JSON.stringify(newMap));
+    } catch (e) {
+      console.warn('本機儲存失敗', e);
+    }
+  };
+
+  // 字級樣式對應表（螢幕投影呈現）
   const fontStyles = useMemo(() => {
     if (fontScale === 'small') {
       return {
@@ -113,12 +156,10 @@ window.AdminResultsView = function() {
         schoolText: 'text-xs',
         scoreMain: 'text-lg font-black',
         rankBadge: 'text-xs',
-        subScore: 'text-[11px]',
         avgScore: 'text-xl font-black',
         rankNum: 'text-xl font-black',
         commentText: 'text-sm leading-relaxed',
-        selectText: 'text-sm py-1.5 px-2',
-        fileBtn: 'text-xs px-2 py-0.5'
+        selectText: 'text-sm py-1.5 px-2'
       };
     }
     if (fontScale === 'medium') {
@@ -128,31 +169,27 @@ window.AdminResultsView = function() {
         schoolText: 'text-sm',
         scoreMain: 'text-xl font-black',
         rankBadge: 'text-sm',
-        subScore: 'text-xs',
         avgScore: 'text-2xl font-black',
         rankNum: 'text-2xl font-black',
         commentText: 'text-base leading-relaxed',
-        selectText: 'text-base py-2 px-2.5',
-        fileBtn: 'text-xs px-2.5 py-1'
+        selectText: 'text-base py-2 px-2.5'
       };
     }
-    // 'large' (預設：22px ~ 28px+ 投影大字體)
+    // 'large' (預設：大字體)
     return {
       tableHeader: 'text-lg',
       workTitle: 'text-[22px] font-black leading-snug',
       schoolText: 'text-base font-bold',
       scoreMain: 'text-[24px] font-black',
       rankBadge: 'text-base font-bold',
-      subScore: 'text-sm font-semibold',
       avgScore: 'text-[28px] font-black',
       rankNum: 'text-[28px] font-black',
       commentText: 'text-[18px] leading-relaxed font-medium',
-      selectText: 'text-[18px] py-2.5 px-3',
-      fileBtn: 'text-sm px-2.5 py-1 font-bold'
+      selectText: 'text-[18px] py-2.5 px-3'
     };
   }, [fontScale]);
 
-  // 1. 取得目前選中組別的 3 位負責評審 (例如 A, B, C)
+  // 1. 取得目前選中組別的 3 位負責評審
   const groupJudges = useMemo(() => {
     const matched = judges.filter(j => {
       const code = String(j.judge_code || j.Judge_Code || '').trim();
@@ -182,15 +219,14 @@ window.AdminResultsView = function() {
     });
   }, [judges, selectedCategory]);
 
-  // 2. 篩選該組別之參賽隊伍並計算每位評審組內序位、平均總分、序位法總分與兩種排名
+  // 2. 篩選該組別之參賽隊伍並計算每位評審組內序位、平均總分、序位法總分與排名
   const processedGroupData = useMemo(() => {
     const groupTeams = teams.filter(t => {
       const cat = String(t.category || t.Category || t.group_name || t.Group_Name || '').trim();
       return cat === selectedCategory;
     });
 
-    // 先針對 3 位評審各自計算該評審在此組別內的給分序位 (1, 2, 3... 同分並列)
-    const judgeRankMap = {}; // { [judgeCode]: { [teamId]: rank } }
+    const judgeRankMap = {};
     groupJudges.forEach(j => {
       judgeRankMap[j.code] = {};
       const scoredList = [];
@@ -211,7 +247,6 @@ window.AdminResultsView = function() {
       });
     });
 
-    // 組合每支隊伍的完整對照資料
     const enriched = groupTeams.map((t, idx) => {
       const tid = String(t.team_id || t.Team_ID);
       const judgeDetails = groupJudges.map(j => {
@@ -242,7 +277,6 @@ window.AdminResultsView = function() {
         ? validRanks.reduce((acc, cur) => acc + cur.rank, 0)
         : null;
 
-      // 統計幾位評審推薦「簡報之星」或「學習之星」
       const starPresentationCount = judgeDetails.filter(d => d.award_rec.includes('簡報之星')).length;
       const starLearningCount = judgeDetails.filter(d => d.award_rec.includes('學習之星')).length;
       const recSummaryParts = judgeDetails
@@ -273,7 +307,7 @@ window.AdminResultsView = function() {
       };
     });
 
-    // 計算「平均總分排名 (avg_rank)」
+    // 平均總分排名
     const byAvg = [...enriched].filter(item => item.avg_score !== null).sort((a, b) => {
       if (b.avg_score !== a.avg_score) return b.avg_score - a.avg_score;
       return (a.rank_sum ?? 999) - (b.rank_sum ?? 999);
@@ -287,7 +321,7 @@ window.AdminResultsView = function() {
       avgRankLookup[item.team_id] = curAvgRank;
     });
 
-    // 計算「序位法總分排名 (sum_rank)」
+    // 序位法總分排名
     const byRankSum = [...enriched].filter(item => item.rank_sum !== null).sort((a, b) => {
       if (a.rank_sum !== b.rank_sum) return a.rank_sum - b.rank_sum;
       return (b.avg_score ?? 0) - (a.avg_score ?? 0);
@@ -314,7 +348,6 @@ window.AdminResultsView = function() {
       };
     });
 
-    // 依選擇的排序模式排序
     if (sortMode === 'avg_desc') {
       withRanks.sort((a, b) => {
         if (a.avg_score === null && b.avg_score === null) return a.seq_index - b.seq_index;
@@ -338,17 +371,15 @@ window.AdminResultsView = function() {
     return withRanks;
   }, [teams, scores, groupJudges, selectedCategory, sortMode]);
 
-  // 3. 計算本組 1/3 錄取名額上限與目前已選獎項統計
+  // 3. 計算本組 1/3 錄取名額上限與統計
   const quotaStats = useMemo(() => {
     const totalTeams = processedGroupData.length;
-    // 三分之一名額（例如 9隊->3名、10隊->4名、6隊->2名）
     const quotaLimit = totalTeams > 0 ? Math.ceil(totalTeams / 3) : 0;
 
-    let topCount = 0;       // 特優
-    let excellentCount = 0; // 優等
-    let presStarCount = 0;  // 簡報之星
-    let learnStarCount = 0; // 學習之星
-    let savedCount = 0;
+    let topCount = 0;
+    let excellentCount = 0;
+    let presStarCount = 0;
+    let learnStarCount = 0;
 
     processedGroupData.forEach(item => {
       const dec = decisionsMap[item.team_id] || { feature_award: '', rank_award: '' };
@@ -356,13 +387,11 @@ window.AdminResultsView = function() {
       if (dec.rank_award === '優等') excellentCount++;
       if (dec.feature_award === '簡報之星') presStarCount++;
       if (dec.feature_award === '學習之星') learnStarCount++;
-      if (dec.saved) savedCount++;
     });
 
     const totalTopWinners = topCount + excellentCount;
     const isOverQuota = totalTopWinners > quotaLimit;
 
-    // 檢查 3 位評審在此組別的完評進度
     const judgeProgress = groupJudges.map(j => {
       let count = 0;
       processedGroupData.forEach(item => {
@@ -386,38 +415,35 @@ window.AdminResultsView = function() {
       presStarCount,
       learnStarCount,
       isOverQuota,
-      savedCount,
-      allJudgesComplete: judgeProgress.every(jp => jp.isComplete),
       judgeProgress
     };
   }, [processedGroupData, decisionsMap, groupJudges]);
 
-  // 4. 單一隊伍下拉選單變更處理
+  // 4. 單一隊伍下拉選單變更處理 (變更時即刻自動暫存至 LocalStorage)
   const handleDecisionChange = (teamId, field, value) => {
     setDecisionsMap(prev => {
       const current = prev[teamId] || { feature_award: '', rank_award: '', saved: false };
       const updated = { ...current, [field]: value, saved: false };
 
-      // 依四層金字塔原則：若特色優選獎選了「特優」或「優等」，其特色表現獎自動晉級為「簡報之星」
       if (field === 'rank_award' && (value === '特優' || value === '優等')) {
         updated.feature_award = '簡報之星';
       }
-      // 若特色表現獎改為「學習之星」或「無」，則無法同時領取特優/優等
       if (field === 'feature_award' && value !== '簡報之星' && (updated.rank_award === '特優' || updated.rank_award === '優等')) {
         updated.rank_award = '';
       }
 
-      return { ...prev, [teamId]: updated };
+      const nextMap = { ...prev, [teamId]: updated };
+      saveToLocalDraft(nextMap);
+      return nextMap;
     });
     setHasUnsavedChanges(true);
   };
 
-  // 5. 「🪄 一鍵帶入系統試算建議」：依四層金字塔與 1/3 名額、85/90 分原則自動試算
+  // 5. 「一鍵帶入系統試算建議」
   const handleApplySystemRecommendations = () => {
     if (processedGroupData.length === 0) return;
 
     const quota = quotaStats.quotaLimit;
-    // 依平均總分高低排序來分配前 1/3 名額
     const sortedByScore = [...processedGroupData].sort((a, b) => {
       if (a.avg_score === null && b.avg_score === null) return a.seq_index - b.seq_index;
       if (a.avg_score === null) return 1;
@@ -434,15 +460,10 @@ window.AdminResultsView = function() {
       let rankAward = '';
 
       if (hasAnyScore) {
-        // 第一階保底：有交件參賽即為「學習之星」
         featureAward = '學習之星';
-
-        // 第二階佳作角色：若有評審推薦「簡報之星」或平均達 82 分以上，或位於前 1/3 名額內，升為「簡報之星」
         if (item.star_presentation_count >= 1 || avg >= 82 || index < quota) {
           featureAward = '簡報之星';
         }
-
-        // 第三、四階晉級（從簡報之星中擇優錄取前 1/3 名額）：原則 90 分以上特優、85 分以上優等
         if (index < quota) {
           if (avg >= 90) {
             rankAward = '特優';
@@ -462,6 +483,7 @@ window.AdminResultsView = function() {
     });
 
     setDecisionsMap(newMap);
+    saveToLocalDraft(newMap);
     setHasUnsavedChanges(true);
   };
 
@@ -471,7 +493,7 @@ window.AdminResultsView = function() {
 
     if (quotaStats.isOverQuota) {
       const confirmOver = window.confirm(
-        `⚠️ 名額提醒：本組共有 ${quotaStats.totalTeams} 隊，三分之一建議名額上限為 ${quotaStats.quotaLimit} 隊。\n` +
+        `名額提醒：本組共有 ${quotaStats.totalTeams} 隊，三分之一建議名額上限為 ${quotaStats.quotaLimit} 隊。\n` +
         `目前您勾選了「特優 ${quotaStats.topCount} 隊 + 優等 ${quotaStats.excellentCount} 隊 = 共 ${quotaStats.totalTopWinners} 隊」。\n\n確定要破例儲存嗎？`
       );
       if (!confirmOver) return;
@@ -500,23 +522,22 @@ window.AdminResultsView = function() {
     setSaving(false);
 
     if (res.status === 'success') {
-      setDecisionsMap(prev => {
-        const next = { ...prev };
-        processedGroupData.forEach(item => {
-          if (next[item.team_id]) {
-            next[item.team_id] = { ...next[item.team_id], saved: true };
-          } else {
-            next[item.team_id] = { feature_award: '', rank_award: '', saved: true };
-          }
-        });
-        return next;
+      const next = { ...decisionsMap };
+      processedGroupData.forEach(item => {
+        if (next[item.team_id]) {
+          next[item.team_id] = { ...next[item.team_id], saved: true };
+        } else {
+          next[item.team_id] = { feature_award: '', rank_award: '', saved: true };
+        }
       });
+      setDecisionsMap(next);
+      saveToLocalDraft(next);
       setHasUnsavedChanges(false);
       const nowStr = new Date().toLocaleTimeString('zh-TW', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
       setLastSavedTime(nowStr);
-      alert(`✅ 【${selectedCategory}】共 ${payloadResults.length} 支隊伍的決審得獎名單已成功寫入雲端資料庫 (Final_Results)！`);
+      alert(`【${selectedCategory}】共 ${payloadResults.length} 支隊伍的決審得獎名單已成功儲存至雲端資料庫 (Final_Results)！`);
     } else {
-      alert('❌ 儲存失敗：' + (res.message || '請稍後再試'));
+      alert('儲存失敗：' + (res.message || '請稍後再試'));
     }
   };
 
@@ -570,106 +591,8 @@ window.AdminResultsView = function() {
     if (res.status === 'success' && res.data?.sheet_url) {
       window.open(res.data.sheet_url, '_blank', 'noopener,noreferrer');
     } else {
-      alert('❌ 產生雲端評分總表失敗：' + (res.message || '未知錯誤'));
+      alert('產生雲端評分總表失敗：' + (res.message || '未知錯誤'));
     }
-  };
-
-  // 8. 下載本組或全體 Excel (.xlsx) 評分總表
-  const handleDownloadExcel = () => {
-    if (!window.XLSX) {
-      alert('Excel 匯出套件尚未載入完成，請重新整理頁面。');
-      return;
-    }
-    if (processedGroupData.length === 0) return;
-
-    const j1 = groupJudges[0] || { code: 'A' };
-    const j2 = groupJudges[1] || { code: 'B' };
-    const j3 = groupJudges[2] || { code: 'C' };
-
-    const fullTitle = `${CATEGORY_FULL_TITLE_MAP[selectedCategory] || `【${selectedCategory}】`}評分總表`;
-    const aoa = [
-      [fullTitle],
-      [
-        '標題',
-        '學校與隊伍',
-        `評審${j1.code} (總分)`,
-        `評審${j1.code} (序位)`,
-        `評審${j2.code} (總分)`,
-        `評審${j2.code} (序位)`,
-        `評審${j3.code} (總分)`,
-        `評審${j3.code} (序位)`,
-        '平均總分',
-        '序位法總分',
-        '排名',
-        `${j1.code}評語`,
-        `${j2.code}評語`,
-        `${j3.code}評語`,
-        '特色表現獎',
-        '特色優選獎'
-      ]
-    ];
-
-    processedGroupData.forEach((item, idx) => {
-      const dec = decisionsMap[item.team_id] || { feature_award: '', rank_award: '' };
-      const jd1 = item.judgeDetails[0] || {};
-      const jd2 = item.judgeDetails[1] || {};
-      const jd3 = item.judgeDetails[2] || {};
-
-      aoa.push([
-        item.work_title,
-        `${item.school}${item.team_name ? ' (' + item.team_name + ')' : ''}`,
-        jd1.total_score ?? '',
-        jd1.rank ?? '',
-        jd2.total_score ?? '',
-        jd2.rank ?? '',
-        jd3.total_score ?? '',
-        jd3.rank ?? '',
-        item.avg_score ?? '',
-        item.rank_sum ?? '',
-        item.final_rank ?? (idx + 1),
-        jd1.comment ? (jd1.award_rec ? `${jd1.comment} (${jd1.award_rec})` : jd1.comment) : '',
-        jd2.comment ? (jd2.award_rec ? `${jd2.comment} (${jd2.award_rec})` : jd2.comment) : '',
-        jd3.comment ? (jd3.award_rec ? `${jd3.comment} (${jd3.award_rec})` : jd3.comment) : '',
-        dec.feature_award || '',
-        dec.rank_award || ''
-      ]);
-    });
-
-    // 以下空白列
-    const nPlusOne = processedGroupData.length + 1;
-    aoa.push([
-      '以下空白',
-      '—',
-      '—',
-      nPlusOne,
-      '—',
-      nPlusOne,
-      '—',
-      nPlusOne,
-      '—',
-      nPlusOne * 3,
-      nPlusOne,
-      '',
-      '',
-      '',
-      '',
-      ''
-    ]);
-
-    const ws = window.XLSX.utils.aoa_to_sheet(aoa);
-    ws['!cols'] = [
-      { wch: 28 }, { wch: 20 },
-      { wch: 12 }, { wch: 10 },
-      { wch: 12 }, { wch: 10 },
-      { wch: 12 }, { wch: 10 },
-      { wch: 12 }, { wch: 12 }, { wch: 8 },
-      { wch: 36 }, { wch: 36 }, { wch: 36 },
-      { wch: 14 }, { wch: 14 }
-    ];
-
-    const wb = window.XLSX.utils.book_new();
-    window.XLSX.utils.book_append_sheet(wb, ws, `${selectedCategory}_評分總表`.substring(0, 31));
-    window.XLSX.writeFile(wb, `${window.APP_CONFIG.CURRENT_YEAR}學年度_${selectedCategory}_評分總表.xlsx`);
   };
 
   const fullCategoryHeading = `${CATEGORY_FULL_TITLE_MAP[selectedCategory] || `【${selectedCategory}】`}評分總表`;
@@ -677,7 +600,7 @@ window.AdminResultsView = function() {
 
   return (
     <div className="space-y-4">
-      {/* ==================== 頂部工具列 (投影字級切換、組別選單、規準抽屜、重新整理) ==================== */}
+      {/* ==================== 頂部工具列 ==================== */}
       <div className="no-print bg-white p-4 rounded-xl border border-amber-200 shadow-sm flex flex-col xl:flex-row justify-between items-stretch xl:items-center gap-4">
         <div className="flex flex-wrap items-center gap-3">
           <div className="bg-amber-900 text-white px-3.5 py-2 rounded-lg flex items-center shadow-sm">
@@ -685,7 +608,7 @@ window.AdminResultsView = function() {
             <span className="font-black text-base tracking-wide">共識會議決審工作台</span>
           </div>
 
-          {/* 組別下拉選單 (快速切換) */}
+          {/* 組別下拉選單 */}
           <div className="flex items-center space-x-2 bg-amber-50 border border-amber-300 rounded-lg px-3 py-1.5">
             <span className="text-sm font-bold text-amber-950">當前審閱組別：</span>
             <select
@@ -715,9 +638,8 @@ window.AdminResultsView = function() {
           </button>
         </div>
 
-        {/* 右側：字級切換 [ ᴀ 小 ] [ A 中 ] [ 𝐀 大 ] + 📋 對照評分規準 */}
+        {/* 右側：字級切換 [ ᴀ 小 ] [ A 中 ] [ 𝐀 大 ] + 評分規準 */}
         <div className="flex flex-wrap items-center gap-3 justify-end">
-          {/* 圖示階梯式字級切換器：純粹「小、中、大」三字 + 大小 A 視覺圖示 */}
           <div className="flex items-center bg-gray-100 p-1 rounded-xl border border-gray-300 shadow-inner">
             <button
               type="button"
@@ -757,19 +679,18 @@ window.AdminResultsView = function() {
             </button>
           </div>
 
-          {/* 右上角：對照評分規準按鈕 */}
           <button
             type="button"
             onClick={() => setShowRubricDrawer(true)}
             className="bg-indigo-700 hover:bg-indigo-800 text-white px-4 py-2 rounded-xl text-sm font-black flex items-center shadow-sm transition"
           >
             <span className="material-icons text-lg mr-1.5">fact_check</span>
-            📋 對照評分規準
+            對照評分規準
           </button>
         </div>
       </div>
 
-      {/* ==================== 六大組別頁籤列 (方便一個組別一個組別點開) ==================== */}
+      {/* ==================== 六大組別頁籤列 ==================== */}
       <div className="no-print flex flex-wrap gap-2">
         {CATEGORIES.map(c => {
           const isSelected = selectedCategory === c;
@@ -803,7 +724,6 @@ window.AdminResultsView = function() {
       {/* ==================== 共識會議名額與評審完評狀態儀表板 ==================== */}
       <div className="no-print bg-amber-50/90 border-2 border-amber-300 rounded-xl p-4 shadow-sm space-y-3">
         <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
-          {/* 左側：3位評審完評進度與三分之一名額計算 */}
           <div className="flex flex-wrap items-center gap-3">
             <div className="bg-white border border-amber-300 rounded-lg px-3.5 py-2 flex items-center space-x-3 shadow-sm">
               <span className="text-sm font-black text-amber-950">評審完評進度：</span>
@@ -821,7 +741,6 @@ window.AdminResultsView = function() {
               ))}
             </div>
 
-            {/* 三分之一名額上限與目前勾選統計 */}
             <div className={`rounded-lg px-4 py-2 border flex flex-wrap items-center gap-3 shadow-sm ${
               quotaStats.isOverQuota
                 ? 'bg-red-50 border-red-400 text-red-900'
@@ -837,10 +756,10 @@ window.AdminResultsView = function() {
               <div className="h-5 w-px bg-gray-300 hidden sm:block"></div>
               <div className="flex items-center space-x-2 text-sm font-bold">
                 <span className="px-2.5 py-1 rounded bg-yellow-200 text-yellow-950 font-black border border-yellow-400">
-                  🥇 特優：{quotaStats.topCount}
+                  特優：{quotaStats.topCount}
                 </span>
                 <span className="px-2.5 py-1 rounded bg-amber-100 text-amber-950 font-black border border-amber-300">
-                  🥈 優等：{quotaStats.excellentCount}
+                  優等：{quotaStats.excellentCount}
                 </span>
                 <span className={`px-2.5 py-1 rounded font-black ${
                   quotaStats.isOverQuota ? 'bg-red-600 text-white animate-pulse' : 'bg-emerald-100 text-emerald-900'
@@ -848,28 +767,16 @@ window.AdminResultsView = function() {
                   合計：{quotaStats.totalTopWinners} / {quotaStats.quotaLimit}
                 </span>
                 <span className="px-2.5 py-1 rounded bg-teal-100 text-teal-900 font-extrabold border border-teal-300">
-                  ✨ 簡報之星：{quotaStats.presStarCount}
+                  簡報之星：{quotaStats.presStarCount}
                 </span>
                 <span className="px-2.5 py-1 rounded bg-orange-100 text-orange-900 font-extrabold border border-orange-300">
-                  ✨ 學習之星：{quotaStats.learnStarCount}
+                  學習之星：{quotaStats.learnStarCount}
                 </span>
               </div>
             </div>
           </div>
 
-          {/* 右側：一鍵帶入系統試算建議 & 排序切換 */}
           <div className="flex flex-wrap items-center gap-2">
-            <button
-              type="button"
-              onClick={() => setShowSubScores(!showSubScores)}
-              className="px-3 py-2 rounded-lg border border-gray-300 bg-white hover:bg-gray-100 text-gray-800 text-xs font-bold flex items-center shadow-sm"
-            >
-              <span className="material-icons text-sm mr-1">
-                {showSubScores ? 'visibility' : 'visibility_off'}
-              </span>
-              {showSubScores ? '隱藏四項細分' : '顯示四項細分'}
-            </button>
-
             <div className="flex items-center bg-white border border-gray-300 rounded-lg px-2.5 py-1.5 text-xs font-bold text-gray-700 shadow-sm">
               <span className="mr-1.5">排序依據：</span>
               <select
@@ -877,9 +784,9 @@ window.AdminResultsView = function() {
                 onChange={(e) => setSortMode(e.target.value)}
                 className="font-black text-amber-950 bg-transparent focus:outline-none cursor-pointer"
               >
-                <option value="avg_desc">📊 平均總分（高 ➔ 低，預設）</option>
-                <option value="rank_sum_asc">🔢 序位法總分（小 ➔ 大）</option>
-                <option value="team_seq">📋 原出場隊伍序號</option>
+                <option value="avg_desc">平均總分（高 ➔ 低，預設）</option>
+                <option value="rank_sum_asc">序位法總分（小 ➔ 大）</option>
+                <option value="team_seq">原出場隊伍序號</option>
               </select>
             </div>
 
@@ -887,34 +794,35 @@ window.AdminResultsView = function() {
               type="button"
               onClick={handleApplySystemRecommendations}
               className="bg-amber-600 hover:bg-amber-700 text-white px-4 py-2 rounded-lg text-sm font-black flex items-center shadow-sm transition"
-              title="依 90分特優、85分優等、前1/3名額與簡報之星/學習之星原則自動試算"
+              title="依名額上限與分數標準自動填入建議"
             >
               <span className="material-icons text-base mr-1">auto_fix_high</span>
-              🪄 帶入系統試算建議
+              帶入系統建議
             </button>
           </div>
         </div>
 
-        {/* 原則小叮嚀與操作按鈕列 */}
+        {/* 狀態提醒與操作按鈕列 (去重圖示、去 Excel 按鈕、強化本機暫存提示) */}
         <div className="pt-2 border-t border-amber-200/80 flex flex-col md:flex-row justify-between items-start md:items-center gap-3">
-          <div className="text-xs text-amber-950 font-semibold space-y-0.5">
-            <div>
-              💡 <strong>決審晉級原則</strong>：① 完賽保底為「<strong>學習之星</strong>」 ➔ ② 表現佳者選為「<strong>簡報之星</strong>」（相當於佳作，無名額限制） ➔ ③ 再從簡報之星中晉級前 1/3 名額為「<strong>優等</strong>」（原則 ≥85 分）與「<strong>特優</strong>」（原則 ≥90 分）。
-            </div>
+          <div className="flex items-center space-x-2">
+            {hasUnsavedChanges ? (
+              <span className="text-xs font-black text-red-700 bg-red-100 border border-red-300 px-3 py-1.5 rounded-lg flex items-center animate-pulse">
+                <span className="material-icons text-sm mr-1">warning</span>
+                已自動暫存於本機，確認後請記得點擊「儲存本組得獎名單」寫入雲端！
+              </span>
+            ) : lastSavedTime ? (
+              <span className="text-xs font-bold text-emerald-800 bg-emerald-100 border border-emerald-300 px-3 py-1.5 rounded-lg flex items-center">
+                <span className="material-icons text-sm mr-1">check_circle</span>
+                已於 {lastSavedTime} 成功儲存至雲端 Final_Results
+              </span>
+            ) : (
+              <span className="text-xs font-medium text-gray-500">
+                本機自動即時暫存保護中
+              </span>
+            )}
           </div>
 
           <div className="flex flex-wrap items-center gap-2.5 w-full md:w-auto justify-end">
-            {hasUnsavedChanges && (
-              <span className="text-xs font-black text-red-700 bg-red-100 border border-red-300 px-2.5 py-1 rounded-full animate-pulse">
-                ● 尚有變更未儲存
-              </span>
-            )}
-            {lastSavedTime && !hasUnsavedChanges && (
-              <span className="text-xs font-bold text-emerald-800 bg-emerald-100 border border-emerald-300 px-2.5 py-1 rounded-full">
-                ✔ 已於 {lastSavedTime} 儲存至 Final_Results
-              </span>
-            )}
-
             <button
               type="button"
               onClick={handleSaveGroupResults}
@@ -922,7 +830,7 @@ window.AdminResultsView = function() {
               className="bg-emerald-700 hover:bg-emerald-800 disabled:bg-gray-400 text-white px-5 py-2.5 rounded-xl text-sm font-black flex items-center shadow-md transition"
             >
               <span className="material-icons text-base mr-1.5">save</span>
-              {saving ? '儲存雲端中...' : '💾 儲存本組得獎名單'}
+              {saving ? '儲存中...' : '儲存本組得獎名單'}
             </button>
 
             <button
@@ -931,18 +839,8 @@ window.AdminResultsView = function() {
               disabled={exportingSheet || processedGroupData.length === 0}
               className="bg-teal-800 hover:bg-teal-900 disabled:bg-gray-400 text-white px-4 py-2.5 rounded-xl text-sm font-black flex items-center shadow-sm transition"
             >
-              <span className="material-icons text-base mr-1.5">table_view</span>
-              {exportingSheet ? '產生試算表中...' : '☁️ 產生雲端評分總表 ↗'}
-            </button>
-
-            <button
-              type="button"
-              onClick={handleDownloadExcel}
-              disabled={processedGroupData.length === 0}
-              className="bg-slate-700 hover:bg-slate-800 text-white px-3.5 py-2.5 rounded-xl text-sm font-bold flex items-center shadow-sm transition"
-            >
-              <span className="material-icons text-base mr-1">download</span>
-              下載 .xlsx
+              <span className="material-icons text-base mr-1.5">open_in_new</span>
+              {exportingSheet ? '產生中...' : '雲端評分總表'}
             </button>
 
             <button
@@ -952,87 +850,76 @@ window.AdminResultsView = function() {
               className="bg-gray-900 hover:bg-black text-white px-4 py-2.5 rounded-xl text-sm font-black flex items-center shadow-sm transition"
             >
               <span className="material-icons text-base mr-1.5">print</span>
-              🖨️ 列印總表 (公文附件)
+              列印總表
             </button>
           </div>
         </div>
       </div>
 
-      {/* ==================== 評分總表主體 (比照去年評分總表結構與底色，支援大字體投影與 A4 橫式列印) ==================== */}
+      {/* ==================== 評分總表主體 ==================== */}
       <div className="bg-white rounded-xl border-2 border-gray-800 shadow-md overflow-x-auto p-2 md:p-4">
-        {/* 總表頂部大標題 (螢幕與列印皆顯示) */}
-        <div className="mb-3 flex flex-col sm:flex-row justify-between items-start sm:items-end border-b-2 border-black pb-2">
+        {/* 總表頂部大標題：只保留組別評分總表，去除重複小標題與會議紀錄表字眼 */}
+        <div className="mb-3 border-b-2 border-black pb-2">
           <h2 className="text-2xl md:text-3xl font-black text-black tracking-tight">
             {fullCategoryHeading}
           </h2>
-          <div className="text-xs md:text-sm font-bold text-gray-700">
-            {window.APP_CONFIG.CURRENT_YEAR}學年度 簡報達人擂台賽 決審共識會議紀錄表
-          </div>
         </div>
 
         <table className="w-full border-collapse judge-print-table text-black" style={{ border: '2px solid #000' }}>
           <thead>
-            <tr className={`${fontStyles.tableHeader} font-black text-center`}>
-              {/* 1. 標題 (暖米黃 #F9EBC8) */}
+            <tr className={`${fontStyles.tableHeader} font-black text-center print-text-base`}>
               <th
-                className="p-2.5 border border-black"
-                style={{ backgroundColor: '#F9EBC8', minWidth: '220px', width: '17%' }}
+                className="p-2 border border-black"
+                style={{ backgroundColor: '#F9EBC8', width: '18%' }}
               >
                 標題
               </th>
-              {/* 2~4. 三位評審 (暖米黃 #F9EBC8) */}
               {groupJudges.map(j => (
                 <th
                   key={j.code}
-                  className="p-2 border border-black"
-                  style={{ backgroundColor: '#F9EBC8', minWidth: '105px', width: '7.5%' }}
+                  className="p-1.5 border border-black"
+                  style={{ backgroundColor: '#F9EBC8', width: '7%' }}
                 >
                   <div>評審{j.code}</div>
                   <div className="text-xs font-bold text-gray-700 no-print">({j.name})</div>
                 </th>
               ))}
-              {/* 5. 平均總分 (淺粉藍 #DCE6F1) */}
               <th
-                className="p-2 border border-black"
-                style={{ backgroundColor: '#DCE6F1', minWidth: '85px', width: '6%' }}
+                className="p-1.5 border border-black"
+                style={{ backgroundColor: '#DCE6F1', width: '6%' }}
               >
                 平均<br />總分
               </th>
-              {/* 6. 序位法總分 (淺灰 #F2F2F2) */}
               <th
-                className="p-2 border border-black"
-                style={{ backgroundColor: '#F2F2F2', minWidth: '80px', width: '5.5%' }}
+                className="p-1.5 border border-black"
+                style={{ backgroundColor: '#F2F2F2', width: '6%' }}
               >
                 序位法<br />總分
               </th>
-              {/* 7. 排名 (淺紫 #D7BDE2) */}
               <th
-                className="p-2 border border-black"
-                style={{ backgroundColor: '#D7BDE2', minWidth: '65px', width: '4.5%' }}
+                className="p-1.5 border border-black"
+                style={{ backgroundColor: '#D7BDE2', width: '4.5%' }}
               >
                 排名
               </th>
-              {/* 8~10. 三位評審評語 (淺粉紅 #F5D6D6) */}
               {groupJudges.map(j => (
                 <th
                   key={`comment-${j.code}`}
-                  className="p-2.5 border border-black"
-                  style={{ backgroundColor: '#F5D6D6', minWidth: '200px', width: '12.5%' }}
+                  className="p-2 border border-black"
+                  style={{ backgroundColor: '#F5D6D6', width: '13%' }}
                 >
                   {j.code}評語
                 </th>
               ))}
-              {/* 11. 特色表現獎 (淺粉紅 #F5D6D6) */}
               <th
-                className="p-2 border border-black"
-                style={{ backgroundColor: '#F5D6D6', minWidth: '135px', width: '7.5%' }}
+                className="p-1.5 border border-black"
+                style={{ backgroundColor: '#F5D6D6', width: '8%' }}
               >
                 特色表現獎
               </th>
-              {/* 12. 特色優選獎 (淺粉紅 #F5D6D6) */}
               <th
-                className="p-2 border border-black"
-                style={{ backgroundColor: '#F5D6D6', minWidth: '120px', width: '7%' }}
+                className="p-1.5 border border-black"
+                style={{ backgroundColor: '#F5D6D6', width: '7.5%' }}
               >
                 特色優選獎
               </th>
@@ -1043,7 +930,7 @@ window.AdminResultsView = function() {
             {loading ? (
               <tr>
                 <td colSpan="12" className="p-12 text-center text-lg font-bold text-gray-500">
-                  正在從雲端載入評審評分與決審資料...
+                  正在載入評分與決審資料...
                 </td>
               </tr>
             ) : processedGroupData.length === 0 ? (
@@ -1062,27 +949,27 @@ window.AdminResultsView = function() {
                     key={item.team_id}
                     className="border-b border-black hover:bg-amber-50/40 transition"
                   >
-                    {/* 1. 標題 + 學校隊伍 + 作品檔案快速點開按鈕 */}
-                    <td className="p-3 border border-black align-middle text-center">
-                      <div className={`${fontStyles.workTitle} text-gray-950 mb-1`}>
+                    {/* 1. 標題 + 純圖示按鈕 (拿掉文字) */}
+                    <td className="p-2 border border-black align-middle text-center">
+                      <div className={`${fontStyles.workTitle} text-gray-950 mb-0.5 print-text-base`}>
                         {item.work_title || '（未填作品名稱）'}
                       </div>
-                      <div className={`${fontStyles.schoolText} text-amber-950 mb-2`}>
+                      <div className={`${fontStyles.schoolText} text-amber-950 mb-1.5 print-text-sm`}>
                         {item.school}
                         {item.team_name ? `【${item.team_name}】` : ''}
                       </div>
 
-                      {/* 會議即時調閱作品按鈕列 (列印時自動隱藏 .no-print) */}
-                      <div className="no-print flex flex-wrap justify-center gap-1.5 mt-1.5">
+                      {/* 純圖示按鈕列 (無贅字，列印時自動隱藏) */}
+                      <div className="no-print flex items-center justify-center gap-1.5 mt-1">
                         {item.slides_link && (
                           <a
                             href={item.slides_link}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className={`${fontStyles.fileBtn} rounded-md bg-amber-100 hover:bg-amber-200 text-amber-950 border border-amber-400 inline-flex items-center transition`}
-                            title="新分頁開啟簡報檔"
+                            className="w-8 h-8 rounded-lg bg-amber-100 hover:bg-amber-200 text-amber-950 border border-amber-400 flex items-center justify-center text-base shadow-2xs transition"
+                            title="開啟簡報檔 ↗"
                           >
-                            📊 簡報 ↗
+                            📊
                           </a>
                         )}
                         {item.video_link && (
@@ -1090,10 +977,10 @@ window.AdminResultsView = function() {
                             href={item.video_link}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className={`${fontStyles.fileBtn} rounded-md bg-red-100 hover:bg-red-200 text-red-900 border border-red-300 inline-flex items-center transition`}
-                            title="新分頁開啟影片檔"
+                            className="w-8 h-8 rounded-lg bg-red-100 hover:bg-red-200 text-red-900 border border-red-300 flex items-center justify-center text-base shadow-2xs transition"
+                            title="開啟影片檔 ↗"
                           >
-                            🎬 影片 ↗
+                            🎬
                           </a>
                         )}
                         {item.mindmap_link && (
@@ -1101,10 +988,10 @@ window.AdminResultsView = function() {
                             href={item.mindmap_link}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className={`${fontStyles.fileBtn} rounded-md bg-blue-100 hover:bg-blue-200 text-blue-900 border border-blue-300 inline-flex items-center transition`}
-                            title="新分頁開啟心智圖"
+                            className="w-8 h-8 rounded-lg bg-blue-100 hover:bg-blue-200 text-blue-900 border border-blue-300 flex items-center justify-center text-base shadow-2xs transition"
+                            title="開啟 Mindomo 心智圖 ↗"
                           >
-                            🧠 心智圖 ↗
+                            🧠
                           </a>
                         )}
                         {item.course_link && (
@@ -1112,91 +999,96 @@ window.AdminResultsView = function() {
                             href={item.course_link}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className={`${fontStyles.fileBtn} rounded-md bg-purple-100 hover:bg-purple-200 text-purple-900 border border-purple-300 inline-flex items-center transition`}
-                            title="新分頁開啟校訂課程資料"
+                            className="w-8 h-8 rounded-lg bg-purple-100 hover:bg-purple-200 text-purple-900 border border-purple-300 flex items-center justify-center text-base shadow-2xs transition"
+                            title="開啟校訂課程計畫 ↗"
                           >
-                            📑 校訂課程 ↗
+                            📑
                           </a>
                         )}
                       </div>
                     </td>
 
-                    {/* 2~4. 三位評審分數、組內序位与四項細分 */}
+                    {/* 2~4. 三位評審 (清爽呈現，四項細分改為 hover 浮動卡片) */}
                     {item.judgeDetails.map(jd => (
                       <td
                         key={`${item.team_id}-${jd.judge_code}`}
-                        className="p-2.5 border border-black text-center align-middle"
+                        className="p-1.5 border border-black text-center align-middle relative group cursor-default"
                       >
                         {jd.has_scored ? (
                           <div className="space-y-1">
-                            {/* 評審給分總分 */}
-                            <div className={`${fontStyles.scoreMain} text-gray-950 leading-none`}>
+                            <div className={`${fontStyles.scoreMain} text-gray-950 leading-none print-text-base`}>
                               {jd.total_score}
-                              <span className="text-xs font-bold text-gray-500 ml-0.5">分</span>
+                              <span className="text-xs font-bold text-gray-500 ml-0.5 no-print">分</span>
                             </div>
-                            {/* 該評審給的序位 */}
-                            <div className={`${fontStyles.rankBadge} inline-block px-2 py-0.5 rounded bg-amber-100 text-amber-950 border border-amber-300`}>
+                            <div className={`${fontStyles.rankBadge} inline-block px-1.5 py-0.5 rounded bg-amber-100 text-amber-950 border border-amber-300 print-text-sm`}>
                               序位 {jd.rank}
                             </div>
-                            {/* 四項細分 (40/30/20/10) 直接顯示免懸停 */}
-                            {showSubScores && (
-                              <div className={`no-print ${fontStyles.subScore} text-gray-600 bg-gray-50 rounded px-1.5 py-1 border border-gray-200 leading-tight`}>
-                                <div>內{jd.score_content} / 表{jd.score_expression}</div>
-                                <div>台{jd.score_stage} / 技{jd.score_technique}</div>
+
+                            {/* 滑鼠懸停才浮現的四項細分卡片 (列印時隱藏) */}
+                            <div className="no-print hidden group-hover:block absolute z-30 bottom-full left-1/2 -translate-x-1/2 mb-1.5 w-44 p-2 bg-gray-900 text-white text-xs rounded-lg shadow-xl border border-gray-700 pointer-events-none text-left">
+                              <div className="font-bold text-amber-300 mb-1 border-b border-gray-700 pb-0.5">
+                                評審{jd.judge_code} 細項評分：
                               </div>
-                            )}
+                              <div className="space-y-0.5 leading-snug">
+                                <div className="flex justify-between">
+                                  <span>簡報內容(40%)：</span>
+                                  <span className="font-bold text-amber-200">{jd.score_content}</span>
+                                </div>
+                                <div className="flex justify-between">
+                                  <span>表達能力(30%)：</span>
+                                  <span className="font-bold text-blue-200">{jd.score_expression}</span>
+                                </div>
+                                <div className="flex justify-between">
+                                  <span>台風表現(20%)：</span>
+                                  <span className="font-bold text-emerald-200">{jd.score_stage}</span>
+                                </div>
+                                <div className="flex justify-between">
+                                  <span>製作技巧(10%)：</span>
+                                  <span className="font-bold text-purple-200">{jd.score_technique}</span>
+                                </div>
+                              </div>
+                              <div className="mt-1 pt-1 border-t border-gray-700 flex justify-between font-black text-white">
+                                <span>合計總分：</span>
+                                <span className="text-amber-400">{jd.total_score} 分</span>
+                              </div>
+                            </div>
                           </div>
                         ) : (
-                          <span className="text-sm font-bold text-gray-400">未評分</span>
+                          <span className="text-xs font-bold text-gray-400">未評分</span>
                         )}
                       </td>
                     ))}
 
                     {/* 5. 平均總分 */}
-                    <td className="p-2.5 border border-black text-center align-middle bg-sky-50/40">
+                    <td className="p-1.5 border border-black text-center align-middle bg-sky-50/40">
                       {item.avg_score !== null ? (
-                        <div>
-                          <div className={`${fontStyles.avgScore} ${
-                            item.avg_score >= 90
-                              ? 'text-amber-700'
-                              : item.avg_score >= 85
-                              ? 'text-emerald-800'
-                              : 'text-gray-900'
-                          }`}>
-                            {item.avg_score.toFixed(1)}
-                          </div>
-                          {item.avg_score >= 90 && (
-                            <span className="no-print inline-block text-xs font-black px-1.5 py-0.5 rounded bg-yellow-200 text-yellow-950">
-                              ≥90 特優線
-                            </span>
-                          )}
-                          {item.avg_score >= 85 && item.avg_score < 90 && (
-                            <span className="no-print inline-block text-xs font-black px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-900">
-                              ≥85 優等線
-                            </span>
-                          )}
+                        <div className={`${fontStyles.avgScore} print-text-base ${
+                          item.avg_score >= 90
+                            ? 'text-amber-700'
+                            : item.avg_score >= 85
+                            ? 'text-emerald-800'
+                            : 'text-gray-900'
+                        }`}>
+                          {item.avg_score.toFixed(1)}
                         </div>
                       ) : (
                         <span className="text-gray-400 font-bold">—</span>
                       )}
                     </td>
 
-                    {/* 6. 序位法總分 */}
-                    <td className="p-2.5 border border-black text-center align-middle">
+                    {/* 6. 序位法總分 (只呈現一個乾淨加總數字，拿掉「(序位排第X)」) */}
+                    <td className="p-1.5 border border-black text-center align-middle">
                       {item.rank_sum !== null ? (
                         <div>
-                          <div className={`${fontStyles.scoreMain} text-gray-800`}>
+                          <div className={`${fontStyles.scoreMain} text-gray-800 print-text-base`}>
                             {item.rank_sum}
-                          </div>
-                          <div className="no-print text-xs font-bold text-gray-500">
-                            (序位排第 {item.sum_rank})
                           </div>
                           {item.has_rank_discrepancy && (
                             <div
-                              className="no-print mt-1 inline-block px-1.5 py-0.5 rounded bg-orange-100 text-orange-900 border border-orange-300 text-[11px] font-black"
-                              title={`總分平均排第 ${item.avg_rank} 名，但序位加總排第 ${item.sum_rank} 名，可於共識會議討論`}
+                              className="no-print mt-0.5 inline-block px-1 py-0.2 rounded bg-orange-100 text-orange-900 border border-orange-300 text-[10px] font-bold"
+                              title={`總分排第 ${item.avg_rank} 名，序位加總排第 ${item.sum_rank} 名`}
                             >
-                              ⚠️ 與總分名次不同
+                              名次不同
                             </div>
                           )}
                         </div>
@@ -1205,34 +1097,34 @@ window.AdminResultsView = function() {
                       )}
                     </td>
 
-                    {/* 7. 排名 (獲選特優/優等時亮黃底 #FFF200，完全比照去年總表視覺) */}
+                    {/* 7. 排名 (特優/優等亮黃底 #FFF200) */}
                     <td
-                      className="p-2.5 border border-black text-center align-middle"
+                      className="p-1.5 border border-black text-center align-middle"
                       style={{
                         backgroundColor: isTopWinner ? '#FFF200' : 'transparent'
                       }}
                     >
-                      <div className={`${fontStyles.rankNum} text-black`}>
+                      <div className={`${fontStyles.rankNum} text-black print-text-base`}>
                         {item.final_rank ?? (idx + 1)}
                       </div>
                     </td>
 
-                    {/* 8~10. 三位評審完整評語 (免滑鼠懸停，直接完整呈現 + 顯示評審初步推薦標籤) */}
+                    {/* 8~10. 三位評審評語 */}
                     {item.judgeDetails.map(jd => (
                       <td
                         key={`comment-cell-${item.team_id}-${jd.judge_code}`}
-                        className="p-3 border border-black align-middle text-left"
+                        className="p-2 border border-black align-middle text-left"
                       >
                         {jd.comment ? (
-                          <div className={`${fontStyles.commentText} text-gray-950 whitespace-pre-wrap break-words`}>
+                          <div className={`${fontStyles.commentText} text-gray-950 whitespace-pre-wrap break-words print-text-sm`}>
                             {jd.comment}
                           </div>
                         ) : (
-                          <span className="text-gray-400 text-sm italic">（無評語）</span>
+                          <span className="text-gray-400 text-xs italic">（無評語）</span>
                         )}
                         {jd.award_rec && (
-                          <div className="mt-1.5">
-                            <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-black border ${
+                          <div className="mt-1">
+                            <span className={`inline-block px-1.5 py-0.2 rounded-full text-xs font-bold border print-text-sm ${
                               jd.award_rec.includes('簡報之星')
                                 ? 'bg-teal-100 text-teal-950 border-teal-400'
                                 : 'bg-amber-100 text-amber-950 border-amber-400'
@@ -1244,14 +1136,13 @@ window.AdminResultsView = function() {
                       </td>
                     ))}
 
-                    {/* 11. 特色表現獎 (先決定：簡報之星 / 學習之星) */}
-                    <td className="p-2.5 border border-black text-center align-middle">
-                      {/* 網頁互動下拉選單 (列印時隱藏) */}
-                      <div className="no-print space-y-1.5">
+                    {/* 11. 特色表現獎 */}
+                    <td className="p-1.5 border border-black text-center align-middle">
+                      <div className="no-print space-y-1">
                         <select
                           value={dec.feature_award || ''}
                           onChange={(e) => handleDecisionChange(item.team_id, 'feature_award', e.target.value)}
-                          className={`w-full rounded-xl font-black border-2 cursor-pointer transition focus:outline-none ${fontStyles.selectText} ${
+                          className={`w-full rounded-lg font-black border cursor-pointer transition focus:outline-none ${fontStyles.selectText} ${
                             dec.feature_award === '簡報之星'
                               ? 'bg-teal-100 text-teal-950 border-teal-500'
                               : dec.feature_award === '學習之星'
@@ -1263,39 +1154,24 @@ window.AdminResultsView = function() {
                           <option value="簡報之星">簡報之星</option>
                           <option value="學習之星">學習之星</option>
                         </select>
-
-                        {/* 顯示三位評審的推薦票數提示 */}
-                        {(item.star_presentation_count > 0 || item.star_learning_count > 0) && (
-                          <div className="text-[11px] font-bold text-gray-600 leading-tight">
-                            評審建議：
-                            {item.star_presentation_count > 0 && (
-                              <span className="text-teal-800 mr-1">簡報×{item.star_presentation_count}</span>
-                            )}
-                            {item.star_learning_count > 0 && (
-                              <span className="text-amber-800">學習×{item.star_learning_count}</span>
-                            )}
-                          </div>
-                        )}
                       </div>
 
-                      {/* 紙本列印時顯示之純文字 */}
-                      <span className={`only-print-inline ${fontStyles.workTitle} font-black`}>
+                      <span className="only-print-inline print-text-base font-black">
                         {dec.feature_award || ''}
                       </span>
                     </td>
 
-                    {/* 12. 特色優選獎 (從簡報之星晉級：特優 / 優等) */}
-                    <td className="p-2.5 border border-black text-center align-middle">
-                      {/* 網頁互動下拉選單 (列印時隱藏) */}
+                    {/* 12. 特色優選獎 */}
+                    <td className="p-1.5 border border-black text-center align-middle">
                       <div className="no-print space-y-1">
                         <select
                           value={dec.rank_award || ''}
                           onChange={(e) => handleDecisionChange(item.team_id, 'rank_award', e.target.value)}
-                          className={`w-full rounded-xl font-black border-2 cursor-pointer transition focus:outline-none ${fontStyles.selectText} ${
+                          className={`w-full rounded-lg font-black border cursor-pointer transition focus:outline-none ${fontStyles.selectText} ${
                             dec.rank_award === '特優'
-                              ? 'bg-yellow-300 text-yellow-950 border-yellow-600 shadow-sm'
+                              ? 'bg-yellow-300 text-yellow-950 border-yellow-600'
                               : dec.rank_award === '優等'
-                              ? 'bg-amber-200 text-amber-950 border-amber-500 shadow-sm'
+                              ? 'bg-amber-200 text-amber-950 border-amber-500'
                               : 'bg-gray-50 text-gray-400 border-gray-300'
                           }`}
                         >
@@ -1305,8 +1181,7 @@ window.AdminResultsView = function() {
                         </select>
                       </div>
 
-                      {/* 紙本列印時顯示之純文字 */}
-                      <span className={`only-print-inline ${fontStyles.workTitle} font-black`}>
+                      <span className="only-print-inline print-text-base font-black">
                         {dec.rank_award || ''}
                       </span>
                     </td>
@@ -1315,57 +1190,56 @@ window.AdminResultsView = function() {
               })
             )}
 
-            {/* 最末列：「以下空白」防竄改列 (比照去年總表：標題=以下空白、評審A/B/C=N+1、平均總分=—、序位總分=(N+1)*3、排名=N+1) */}
+            {/* 以下空白列 */}
             {!loading && processedGroupData.length > 0 && (
-              <tr className="border-t-2 border-black font-black text-center bg-white">
-                <td className={`p-2.5 border border-black ${fontStyles.workTitle}`}>
+              <tr className="border-t-2 border-black font-black text-center bg-white print-text-base">
+                <td className={`p-2 border border-black ${fontStyles.workTitle}`}>
                   以下空白
                 </td>
-                <td className={`p-2.5 border border-black ${fontStyles.scoreMain}`}>
+                <td className={`p-1.5 border border-black ${fontStyles.scoreMain}`}>
                   {nPlusOne}
                 </td>
-                <td className={`p-2.5 border border-black ${fontStyles.scoreMain}`}>
+                <td className={`p-1.5 border border-black ${fontStyles.scoreMain}`}>
                   {nPlusOne}
                 </td>
-                <td className={`p-2.5 border border-black ${fontStyles.scoreMain}`}>
+                <td className={`p-1.5 border border-black ${fontStyles.scoreMain}`}>
                   {nPlusOne}
                 </td>
-                <td className={`p-2.5 border border-black ${fontStyles.scoreMain}`}>
+                <td className={`p-1.5 border border-black ${fontStyles.scoreMain}`}>
                   —
                 </td>
-                <td className={`p-2.5 border border-black ${fontStyles.scoreMain}`}>
+                <td className={`p-1.5 border border-black ${fontStyles.scoreMain}`}>
                   {nPlusOne * 3}
                 </td>
-                <td className={`p-2.5 border border-black ${fontStyles.scoreMain}`}>
+                <td className={`p-1.5 border border-black ${fontStyles.scoreMain}`}>
                   {nPlusOne}
                 </td>
-                <td className="p-2.5 border border-black"></td>
-                <td className="p-2.5 border border-black"></td>
-                <td className="p-2.5 border border-black"></td>
-                <td className="p-2.5 border border-black"></td>
-                <td className="p-2.5 border border-black"></td>
+                <td className="p-1.5 border border-black"></td>
+                <td className="p-1.5 border border-black"></td>
+                <td className="p-1.5 border border-black"></td>
+                <td className="p-1.5 border border-black"></td>
+                <td className="p-1.5 border border-black"></td>
               </tr>
             )}
           </tbody>
         </table>
 
-        {/* 紙本列印頁尾說明 (無簽核欄，直接供公文系統簽核附件使用) */}
+        {/* 紙本列印頁尾 */}
         <div className="only-print mt-2 flex justify-between items-center text-xs font-bold text-gray-700">
           <span>{window.APP_CONFIG.CURRENT_YEAR}學年度 宜蘭縣國民中小學簡報達人擂台賽 — {fullCategoryHeading}</span>
           <span>列印日期：中華民國 {window.APP_CONFIG.CURRENT_YEAR} 年 　 月 　 日</span>
         </div>
       </div>
 
-      {/* ==================== 115 評分規準側邊對照抽屜 (Rubric Drawer) ==================== */}
+      {/* ==================== 115 評分規準側邊抽屜 (移除晉級原則話語) ==================== */}
       {showRubricDrawer && (
         <div className="no-print fixed inset-0 z-50 flex justify-end bg-black/50 backdrop-blur-xs">
-          <div className="bg-white w-full max-w-3xl h-full shadow-2xl flex flex-col overflow-hidden animate-fade-in">
-            {/* 抽屜標題列 */}
+          <div className="bg-white w-full max-w-2xl h-full shadow-2xl flex flex-col overflow-hidden animate-fade-in">
             <div className="bg-amber-950 text-white px-6 py-4 flex justify-between items-center">
               <div className="flex items-center space-x-2">
                 <span className="material-icons text-amber-400">fact_check</span>
                 <h3 className="text-xl font-black">
-                  115學年度 簡報達人擂台賽 — 評分規準與獎項原則對照表
+                  評分規準對照表
                 </h3>
               </div>
               <button
@@ -1376,9 +1250,7 @@ window.AdminResultsView = function() {
               </button>
             </div>
 
-            {/* 抽屜內容區 */}
             <div className="p-6 overflow-y-auto flex-1 space-y-6 text-gray-900">
-              {/* 外部官方檔案連結 */}
               <div className="flex flex-wrap gap-3 bg-amber-50 p-4 rounded-xl border border-amber-200">
                 {sysConfig.rubric_link && (
                   <a
@@ -1388,7 +1260,7 @@ window.AdminResultsView = function() {
                     className="bg-indigo-700 hover:bg-indigo-800 text-white px-4 py-2 rounded-lg text-sm font-black inline-flex items-center shadow-sm"
                   >
                     <span className="material-icons text-base mr-1.5">open_in_new</span>
-                    開啟完整官方評分規準表 (PDF) ↗
+                    開啟官方評分規準表 (PDF) ↗
                   </a>
                 )}
                 {sysConfig.rules_link && (
@@ -1399,78 +1271,55 @@ window.AdminResultsView = function() {
                     className="bg-amber-800 hover:bg-amber-900 text-white px-4 py-2 rounded-lg text-sm font-black inline-flex items-center shadow-sm"
                   >
                     <span className="material-icons text-base mr-1.5">description</span>
-                    開啟 115 實施計畫簡章 ↗
+                    開啟實施計畫簡章 ↗
                   </a>
                 )}
               </div>
 
-              {/* 獎項晉級金字塔與配額原則 */}
-              <div className="bg-emerald-50 border-2 border-emerald-300 rounded-xl p-4 space-y-2">
-                <h4 className="text-lg font-black text-emerald-950 flex items-center">
-                  <span className="material-icons mr-1.5 text-emerald-700">emoji_events</span>
-                  共識會議得獎決定與晉級原則
-                </h4>
-                <ul className="list-disc pl-5 space-y-1.5 text-base font-bold text-gray-800">
-                  <li>
-                    <span className="text-amber-900 font-black">【學習之星】（參加表現獎）</span>：只要有交件、具相應表現且無擺爛情形，原則上皆給予「學習之星」肯定。
-                  </li>
-                  <li>
-                    <span className="text-teal-900 font-black">【簡報之星】（佳作角色，無名額限制）</span>：整體表現良好之隊伍可評定為「簡報之星」。
-                  </li>
-                  <li>
-                    <span className="text-yellow-900 font-black">【優等 / 特優】（由簡報之星晉級，合計以該組參賽隊數 1/3 四捨五入為上限）</span>：
-                    <ul className="list-circle pl-5 mt-1 space-y-1 text-sm font-bold text-gray-700">
-                      <li>原則上平均總分 <strong>85 分以上</strong> 建議給「<strong>優等</strong>」</li>
-                      <li>原則上平均總分 <strong>90 分以上</strong> 建議給「<strong>特優</strong>」</li>
-                    </ul>
-                  </li>
-                </ul>
-              </div>
-
-              {/* 四大評分項目與比重 */}
+              {/* 四大評分指標 */}
               <div className="space-y-4">
                 <h4 className="text-lg font-black text-gray-900 border-b pb-2">
                   四大評分指標與配分比重（滿分 100 分）
                 </h4>
 
-                <div className="grid grid-cols-1 gap-4">
-                  <div className="p-4 rounded-xl border-2 border-amber-200 bg-white shadow-xs">
+                <div className="grid grid-cols-1 gap-3">
+                  <div className="p-3.5 rounded-xl border border-amber-200 bg-white shadow-2xs">
                     <div className="flex justify-between items-center mb-1">
-                      <span className="text-lg font-black text-amber-950">1. 簡報內容（40%）</span>
-                      <span className="px-3 py-1 rounded-full bg-amber-100 text-amber-900 font-black text-sm">最高 40 分</span>
+                      <span className="text-base font-black text-amber-950">1. 簡報內容（40%）</span>
+                      <span className="px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-900 font-black text-xs">最高 40 分</span>
                     </div>
-                    <p className="text-base text-gray-700 font-medium leading-relaxed">
-                      主題契合度、問題意識與探究深度、資料正確性、邏輯結構完整性（含 Mindomo 心智圖架構對照、校訂課程組之課程脈絡連結）。
+                    <p className="text-sm text-gray-700 leading-relaxed">
+                      主題契合度、問題意識與探究深度、資料正確性、邏輯結構完整性。
                     </p>
                   </div>
 
-                  <div className="p-4 rounded-xl border-2 border-blue-200 bg-white shadow-xs">
+                  <div className="p-3.5 rounded-xl border border-blue-200 bg-white shadow-2xs">
                     <div className="flex justify-between items-center mb-1">
-                      <span className="text-lg font-black text-blue-950">2. 表達能力（30%）</span>
-                      <span className="px-3 py-1 rounded-full bg-blue-100 text-blue-900 font-black text-sm">最高 30 分</span>
+                      <span className="text-base font-black text-blue-950">2. 表達能力（30%）</span>
+                      <span className="px-2.5 py-0.5 rounded-full bg-blue-100 text-blue-900 font-black text-xs">最高 30 分</span>
                     </div>
-                    <p className="text-base text-gray-700 font-medium leading-relaxed">
-                      口齒清晰度、語調流暢自然、時間掌控（5~6分鐘）、重點闡述能力，能以自己的話清楚傳達核心觀點而非照稿唸誦。
+                    <p className="text-sm text-gray-700 leading-relaxed">
+                      口齒清晰度、語調流暢自然、時間掌控（5~6分鐘）、重點闡述能力。
                     </p>
                   </div>
 
-                  <div className="p-4 rounded-xl border-2 border-emerald-200 bg-white shadow-xs">
+                  <div className="p-3.5 rounded-xl border border-emerald-200 bg-white shadow-2xs">
                     <div className="flex justify-between items-center mb-1">
-                      <span className="text-lg font-black text-emerald-950">3. 台風表現（20%）</span>
-                      <span className="px-3 py-1 rounded-full bg-emerald-100 text-emerald-900 font-black text-sm">最高 20 分</span>
+                      <span className="text-base font-black text-emerald-950">3. 台風表現（20%）</span>
+                      <span className="px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-900 font-black text-xs">最高 20 分</span>
                     </div>
-                    <p className="text-base text-gray-700 font-medium leading-relaxed">
-                      肢體語言自然大方、眼神交流、自信心與情緒感染力、團隊成員分工合作與互動默契。
+                    <p className="text-sm text-gray-700 leading-relaxed">
+                      肢體語言自然大方、眼神交流、自信心、團隊分工合作與默契。
                     </p>
                   </div>
 
-                  <div className="p-4 rounded-xl border-2 border-purple-200 bg-white shadow-xs">
+                  <div className="p-3.5 rounded-xl border border-purple-200 bg-white shadow-2xs">
                     <div className="flex justify-between items-center mb-1">
-                      <span className="text-lg font-black text-purple-950">4. 製作技巧（10%）</span>
-                      <span className="px-3 py-1 rounded-full bg-purple-100 text-purple-900 font-black text-sm">最高 10 分</span>
+                      <span className="text-base font-black text-purple-950">4. 製作技巧（10%）</span>
+                      <span className="px-2.5 py-0.5 rounded-full bg-purple-100 text-purple-900 font-black text-xs">最高 10 分</span>
                     </div>
-                    <p className="text-base text-gray-700 font-medium leading-relaxed">
-                      版面視覺美感、圖文排版比例恰當（字體清晰不過小）、色彩搭配、轉場與多媒體輔助效果有助於理解。
+                    <p className="text-sm text-gray-700 leading-relaxed">
+                      版面視覺美感、圖文排版比例（字體適中）、色彩搭配與多媒體效果。
                     </p>
                   </div>
                 </div>

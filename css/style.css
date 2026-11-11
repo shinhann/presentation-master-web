@@ -151,6 +151,58 @@ input[type=range] {
     display: inline-block !important;
   }
 
+  /* 評審評分總表專屬 A4 橫式完全縮版排版 (防溢出) */
+  table.judge-print-table {
+    width: 100% !important;
+    table-layout: fixed !important;
+    border-collapse: collapse !important;
+    border: 1.5px solid #000000 !important;
+    page-break-inside: auto !important;
+    font-size: 9pt !important;
+    line-height: 1.25 !important;
+  }
+
+  table.judge-print-table thead {
+    display: table-header-group !important;
+  }
+
+  table.judge-print-table tfoot {
+    display: table-footer-group !important;
+  }
+
+  table.judge-print-table tr {
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+  }
+
+  table.judge-print-table th,
+  table.judge-print-table td {
+    border: 1px solid #222222 !important;
+    color: #000000 !important;
+    padding: 4px 3px !important;
+    min-width: 0 !important;
+    word-break: break-word !important;
+  }
+
+  table.judge-print-table .print-text-sm {
+    font-size: 8.5pt !important;
+  }
+
+  table.judge-print-table .print-text-base {
+    font-size: 9.5pt !important;
+  }
+
+  table.judge-print-table .print-text-lg {
+    font-size: 10pt !important;
+  }
+
+  /* 簽名欄防跨頁切斷 */
+  .judge-signature-block {
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+  }
+}
+
   /* 展開列印容器，解除固定定位與捲軸限制，確保跨頁正常分頁 */
   .print-sheet-modal-backdrop {
     position: static !important;
