@@ -436,7 +436,6 @@ window.JudgeView = function({ user, onLogout }) {
       const rowsPayload = filteredTeams.map((team, idx) => {
         const tid = team.team_id || team.Team_ID;
         const sc = scoresMap[tid];
-        const awardPrefix = sc && sc.award ? `★ 特色表現獎推薦：${sc.award}\n` : '';
         return {
           seq_label: `第 ${String(idx + 1).padStart(2, '0')} 隊`,
           school: team.school || team.School || '',
@@ -453,7 +452,7 @@ window.JudgeView = function({ user, onLogout }) {
           score_technique: sc ? sc.score_technique : '',
           total_score: sc ? calculateTotal(sc) : 0,
           rank: sc ? (rankMap[tid] || '') : '',
-          comment: sc ? `${awardPrefix}${sc.comment || ''}` : ''
+          comment: sc ? (sc.comment || '') : ''
         };
       });
 
@@ -1043,7 +1042,7 @@ window.JudgeView = function({ user, onLogout }) {
                       <option value="學習之星">✨ 學習之星 (500點e幣)</option>
                     </select>
                     <p className="text-sm text-gray-600 leading-relaxed">
-                      若該隊伍未獲特優/優等，但簡報表現亮眼或達良好水平，可推薦角逐特色表現獎。
+                      若該隊伍未獲特優/優等，但表現亮眼或達良好水平，可推薦角逐特色表現獎（供決審評審會議討論之提名建議，不列印於個人評分表）。
                     </p>
                   </div>
 
@@ -1323,7 +1322,7 @@ window.JudgeView = function({ user, onLogout }) {
                       分數<br />加總
                     </th>
                     <th className="p-2 border border-black w-[4.5%]" style={{ backgroundColor: '#D8E4BC' }}>
-                      序位法
+                      序位
                     </th>
                     <th className="p-2.5 border border-black" style={{ backgroundColor: '#F2F2F2' }}>
                       評語
@@ -1430,18 +1429,13 @@ window.JudgeView = function({ user, onLogout }) {
                           {sc ? totalVal : 0}
                         </td>
 
-                        {/* 12. 序位法 */}
+                        {/* 12. 序位 */}
                         <td className="p-2 border border-black text-center align-middle font-black text-base">
                           {rankVal}
                         </td>
 
-                        {/* 13. 評語 (完整呈現不截斷) */}
+                        {/* 13. 評語 (純淨評語，不印特色獎推薦) */}
                         <td className="p-2.5 border border-black align-top text-xs sm:text-sm leading-relaxed whitespace-pre-wrap break-words">
-                          {sc && sc.award && (
-                            <div className="font-black text-amber-900 mb-1">
-                              ★ 特色表現獎推薦：{sc.award}
-                            </div>
-                          )}
                           {sc && sc.comment ? sc.comment : ''}
                         </td>
                       </tr>
@@ -1467,23 +1461,28 @@ window.JudgeView = function({ user, onLogout }) {
                     <td className="p-2 border border-black text-center text-gray-400">—</td>
                   </tr>
 
-                  {/* 最下方：請評審委員在分數下方簽名處 (防跨頁切斷) */}
+                  {/* 最下方：請評審委員簽名 (左側標籤，右側左上簽章/右下日期) */}
                   <tr className="judge-signature-block">
                     <td
                       colSpan={isCourseGroup ? 6 : 5}
                       className="p-5 border border-black text-center align-middle font-black text-base sm:text-lg"
                       style={{ backgroundColor: '#F9EBC8' }}
                     >
-                      請評審委員在分數下方簽名：
+                      請評審委員簽名
                     </td>
                     <td
                       colSpan={7}
-                      className="p-5 border border-black align-bottom text-right"
-                      style={{ backgroundColor: '#FDF8EC', height: '85px' }}
+                      className="p-3 border border-black align-top"
+                      style={{ backgroundColor: '#FDF8EC', height: '90px' }}
                     >
-                      <span className="text-xs text-gray-600 font-bold">
-                        （評審簽章處　｜　日期：中華民國 115 年 　　 月 　　 日）
-                      </span>
+                      <div className="h-full flex flex-col justify-between" style={{ minHeight: '70px' }}>
+                        <div className="text-xs font-bold text-gray-800 text-left">
+                          評審委員簽章：
+                        </div>
+                        <div className="text-xs font-bold text-gray-800 text-right">
+                          日期：中華民國 115 年 　　 月 　　 日
+                        </div>
+                      </div>
                     </td>
                   </tr>
                 </tbody>

@@ -195,7 +195,7 @@ function processExportJudgeSheet(ss, payload) {
     '臺風表現\n20%',
     '製作技巧\n10%',
     '分數加總',
-    '序位法',
+    '序位',
     '評語'
   ];
 
@@ -267,23 +267,25 @@ function processExportJudgeSheet(ss, payload) {
     .setFontWeight('bold');
   targetSheet.setRowHeight(blankRowIdx, 28);
 
-  // 5. 最下方簽名列：「請評審委員在分數下方簽名：」
+  // 5. 最下方簽名列：「請評審委員簽名」
   const sigRowIdx = blankRowIdx + 1;
   targetSheet.getRange(sigRowIdx, 1, 1, fileEndCol).merge()
-    .setValue('請評審委員在分數下方簽名：')
+    .setValue('請評審委員簽名')
     .setBackground('#F9EBC8')
     .setFontWeight('bold')
     .setFontSize(12)
     .setHorizontalAlignment('center')
     .setVerticalAlignment('middle');
 
+  const sigText = '評審委員簽章：\n\n\n                                                                                 日期：中華民國 ' + year + ' 年 　　 月 　　 日';
   targetSheet.getRange(sigRowIdx, fileEndCol + 1, 1, totalCols - fileEndCol).merge()
-    .setValue('（評審簽章處　｜　日期：中華民國 ' + year + ' 年 　　 月 　　 日）')
+    .setValue(sigText)
     .setBackground('#FDF8EC')
     .setFontSize(10)
-    .setHorizontalAlignment('right')
-    .setVerticalAlignment('bottom');
-  targetSheet.setRowHeight(sigRowIdx, 68);
+    .setHorizontalAlignment('left')
+    .setVerticalAlignment('top')
+    .setWrap(true);
+  targetSheet.setRowHeight(sigRowIdx, 80);
 
   // 6. 全表加上清晰黑實線邊框
   targetSheet.getRange(2, 1, sigRowIdx - 1, totalCols)
