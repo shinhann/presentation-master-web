@@ -161,32 +161,55 @@ function processExportJudgeSheet(ss, payload) {
     return { status: 'error', message: '缺少組別名稱 (category)', data: null };
   }
 
-  // 建立全新獨立 Google 試算表檔案 (完全隔離主資料庫，防範機密外洩)
-  const standaloneTitle = `115學年度_【${category}】_評審${judgeCode}_${judgeName}_評分表`;
+  // 建立全新獨立 Google 試算表檔案 (存放於指定專屬資料夾，依學年度分層建檔)
+  const TARGET_ROOT_FOLDER_ID = '1IBaI6zcLu_28HjuaPEcIGLVV3SU5zPGn';
+  const yearFolderName = `${year}學年度`;
+  const standaloneTitle = `${year}學年度_【${category}】_評審${judgeCode}_${judgeName}_評分表`;
   
   let newSS = null;
+  let targetFolder = null;
 
-  // 1. 嘗試搜尋是否已有同名獨立檔案 (避免重複建立，容錯 DriveApp 尚未授權狀況)
+  // 1. 嘗試定位專屬母資料夾與學年度子資料夾
   try {
-    const existingFiles = DriveApp.getFilesByName(standaloneTitle);
-    if (existingFiles.hasNext()) {
-      newSS = SpreadsheetApp.open(existingFiles.next());
+    const rootFolder = DriveApp.getFolderById(TARGET_ROOT_FOLDER_ID);
+    if (rootFolder) {
+      const subFolders = rootFolder.getFoldersByName(yearFolderName);
+      if (subFolders.hasNext()) {
+        targetFolder = subFolders.next();
+      } else {
+        targetFolder = rootFolder.createFolder(yearFolderName);
+      }
     }
   } catch (driveErr) {
-    Logger.log('DriveApp search bypassed: ' + driveErr.toString());
+    Logger.log('Drive folder access requires authorization or failed: ' + driveErr.toString());
   }
 
-  // 2. 若尚無檔案或 DriveApp 未授權，使用原生 SpreadsheetApp.create 建立全新獨立試算表
+  // 2. 檢查該年度資料夾內是否已有同評審同組別的試算表 (避免重複建檔，直接覆寫更新)
+  if (targetFolder) {
+    try {
+      const existingFiles = targetFolder.getFilesByName(standaloneTitle);
+      if (existingFiles.hasNext()) {
+        const existingFile = existingFiles.next();
+        newSS = SpreadsheetApp.open(existingFile);
+      }
+    } catch (searchErr) {
+      Logger.log('Search file in target folder error: ' + searchErr.toString());
+    }
+  }
+
+  // 3. 若尚未建立過，建立全新獨立試算表並移動至該年度專屬資料夾
   if (!newSS) {
     newSS = SpreadsheetApp.create(standaloneTitle);
-  }
-
-  // 3. 嘗試設定檔案權限為「知道連結者可檢視」 (防篡改、免登入檢視)
-  try {
-    const driveFile = DriveApp.getFileById(newSS.getId());
-    driveFile.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
-  } catch (sharingErr) {
-    Logger.log('DriveApp sharing requires one-time permission: ' + sharingErr.toString());
+    if (targetFolder) {
+      try {
+        const driveFile = DriveApp.getFileById(newSS.getId());
+        driveFile.moveTo(targetFolder);
+        // 設定「知道連結者可檢視」以防資料夾未公開
+        driveFile.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+      } catch (moveErr) {
+        Logger.log('Move/Share file error: ' + moveErr.toString());
+      }
+    }
   }
 
   // 4. 取得該獨立檔案之工作表並清理格式
@@ -360,9 +383,10 @@ function processExportJudgeSheet(ss, payload) {
 }
 
 /**
- * 系統管理員一次性授權 Google Drive 權限輔助函式
+ * 系統管理員一次性授權 Google Drive 專屬評分表資料夾權限
  */
 function authorizeGoogleDrive() {
-  const rootName = DriveApp.getRootFolder().getName();
-  Logger.log('✅ Google Drive 權限已成功授權！根目錄：' + rootName);
+  const TARGET_ROOT_FOLDER_ID = '1IBaI6zcLu_28HjuaPEcIGLVV3SU5zPGn';
+  const folder = DriveApp.getFolderById(TARGET_ROOT_FOLDER_ID);
+  Logger.log('✅ Google Drive 專屬評分表資料庫資料夾已成功授權！資料夾名稱：' + folder.getName());
 }
