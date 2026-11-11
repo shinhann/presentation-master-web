@@ -233,14 +233,7 @@ input[type=range] {
     line-height: 1.2 !important;
   }
 
-  /* 簽名欄防跨頁切斷 */
-  .judge-signature-block {
-    page-break-inside: avoid !important;
-    break-inside: avoid !important;
-  }
-}
-
-  /* 展開列印容器，解除固定定位與捲軸限制，確保跨頁正常分頁 */
+  /* 評審評分表專用：展開列印容器，解除固定定位與捲軸限制，確保跨頁正常分頁 */
   .print-sheet-modal-backdrop {
     position: static !important;
     display: block !important;

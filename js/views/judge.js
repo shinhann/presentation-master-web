@@ -1219,8 +1219,11 @@ window.JudgeView = function({ user, onLogout }) {
           5. 本組評分總表 (簽名單) Modal (支援 A4 橫式跨頁列印 & 雲端 Google 試算表)
          ========================================================= */}
       {printSheetOpen && (
-        <div className="print-sheet-modal-backdrop fixed inset-0 bg-black/75 z-50 overflow-y-auto p-4 sm:p-6 flex justify-center items-start">
-          <div className="print-sheet-modal-box bg-white w-full max-w-[1600px] rounded-2xl shadow-2xl border border-gray-300 overflow-hidden my-2">
+        <div
+          className="print-sheet-modal-backdrop fixed inset-0 bg-black/80 flex justify-center items-start overflow-y-auto p-4 sm:p-6"
+          style={{ zIndex: 9999 }}
+        >
+          <div className="print-sheet-modal-box bg-white w-full max-w-[1600px] rounded-2xl shadow-2xl border border-gray-300 overflow-hidden my-4 relative">
             
             {/* 頂部操作工具列 (列印時自動隱藏 .no-print) */}
             <div className="no-print bg-amber-950 text-white px-6 py-4 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
