@@ -390,3 +390,362 @@ function authorizeGoogleDrive() {
   const folder = DriveApp.getFolderById(TARGET_ROOT_FOLDER_ID);
   Logger.log('✅ Google Drive 專屬評分表資料庫資料夾已成功授權！資料夾名稱：' + folder.getName());
 }
+
+/**
+ * 取得後台共識會議與成績決審所需之完整資料 (Teams + Judges + Scores + Final_Results + Year_Config)
+ */
+function processGetAdminResults(ss, payload) {
+  const reqYear = String(payload.year || payload.competition_year || 115);
+
+  const teamsRes = typeof processGetAllTeams === 'function'
+    ? processGetAllTeams(ss, { year: reqYear })
+    : { data: [] };
+  const judgesRes = typeof processGetAllJudges === 'function'
+    ? processGetAllJudges(ss, { year: reqYear })
+    : { data: [] };
+  const scoresRes = processGetJudgeScores(ss, { year: reqYear });
+  const configRes = typeof processGetSystemConfig === 'function'
+    ? processGetSystemConfig(ss, { year: reqYear })
+    : { data: {} };
+
+  // 讀取 Final_Results 已儲存之決審得獎紀錄
+  let finalResults = [];
+  const finalSheet = ss.getSheetByName('Final_Results');
+  if (finalSheet && finalSheet.getLastRow() >= 2) {
+    const values = finalSheet.getRange(2, 1, finalSheet.getLastRow() - 1, 9).getValues();
+    finalResults = values
+      .filter(row => String(row[0]) === reqYear)
+      .map(row => ({
+        competition_year: row[0],
+        category: String(row[1] || ''),
+        group_name: String(row[2] || ''),
+        team_id: String(row[3] || ''),
+        average_score: row[4] !== '' && row[4] !== null ? Number(row[4]) : '',
+        rank: row[5] !== '' && row[5] !== null ? Number(row[5]) : '',
+        rank_award: String(row[6] || ''),
+        feature_award: String(row[7] || ''),
+        rec_judge_summary: String(row[8] || '')
+      }));
+  }
+
+  return {
+    status: 'success',
+    data: {
+      year: reqYear,
+      teams: teamsRes.data || [],
+      judges: judgesRes.data || [],
+      scores: scoresRes.data || [],
+      final_results: finalResults,
+      config: configRes.data || {}
+    }
+  };
+}
+
+/**
+ * 儲存共識會議決審後之各隊最終獎項與名次至 Final_Results 資料表
+ */
+function processSaveFinalResults(ss, payload) {
+  const lock = LockService.getScriptLock();
+  try {
+    lock.waitLock(10000);
+  } catch (e) {
+    return { status: 'error', message: '系統繁忙中，請稍後幾秒再點擊儲存！', data: null };
+  }
+
+  try {
+    const targetYear = String(payload.year || payload.competition_year || 115);
+    const results = Array.isArray(payload.results) ? payload.results : [];
+
+    let finalSheet = ss.getSheetByName('Final_Results');
+    if (!finalSheet) {
+      finalSheet = ss.insertSheet('Final_Results');
+      finalSheet.appendRow([
+        'Competition_Year', 'Category', 'Group_Name', 'Team_ID',
+        'Average_Score', 'Rank', 'Rank_Award', 'Feature_Award', 'Rec_Judge_Summary'
+      ]);
+      finalSheet.setFrozenRows(1);
+      finalSheet.getRange(1, 1, 1, 9).setFontWeight('bold');
+    }
+
+    const lastRow = finalSheet.getLastRow();
+    let existingRows = [];
+    if (lastRow > 1) {
+      existingRows = finalSheet.getRange(2, 1, lastRow - 1, 4).getValues();
+    }
+
+    results.forEach(item => {
+      const teamId = String(item.team_id || '').trim();
+      if (!teamId) return;
+
+      const catVal = String(item.category || item.group_name || '');
+      const grpVal = String(item.group_name || item.category || '');
+      const avgVal = item.average_score !== undefined && item.average_score !== '' ? Number(item.average_score) : '';
+      const rankVal = item.rank !== undefined && item.rank !== '' ? Number(item.rank) : '';
+      const rankAward = String(item.rank_award || '');       // 特優 / 優等 / ''
+      const featureAward = String(item.feature_award || ''); // 簡報之星 / 學習之星 / ''
+      const recSummary = String(item.rec_judge_summary || '');
+
+      const rowData = [
+        Number(targetYear),
+        catVal,
+        grpVal,
+        teamId,
+        avgVal,
+        rankVal,
+        rankAward,
+        featureAward,
+        recSummary
+      ];
+
+      const foundIdx = existingRows.findIndex(r =>
+        String(r[0]) === targetYear && String(r[3]) === teamId
+      );
+
+      if (foundIdx !== -1) {
+        finalSheet.getRange(foundIdx + 2, 1, 1, 9).setValues([rowData]);
+      } else {
+        finalSheet.appendRow(rowData);
+        existingRows.push([Number(targetYear), catVal, grpVal, teamId]);
+      }
+    });
+
+    SpreadsheetApp.flush();
+
+    return {
+      status: 'success',
+      message: `已成功儲存 ${results.length} 支隊伍的決審得獎結果至 Final_Results！`,
+      data: {
+        updated_count: results.length,
+        saved_at: new Date().toISOString()
+      }
+    };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+/**
+ * 產生並格式化「組別共識會議評分總表」獨立 Google 試算表 (比照去年評分總表配色、平均總分+序位法並列、黃底醒目名次、以下空白、無簽核欄供公文附件使用)
+ */
+function processExportGroupSummarySheet(ss, payload) {
+  const year = String(payload.year || payload.competition_year || 115);
+  const category = String(payload.category || '').trim();
+  const categoryTitle = String(payload.category_title || category).trim();
+  const judgeHeaders = Array.isArray(payload.judge_headers) && payload.judge_headers.length === 3
+    ? payload.judge_headers
+    : [{ code: 'A', name: '評審A' }, { code: 'B', name: '評審B' }, { code: 'C', name: '評審C' }];
+  const rows = Array.isArray(payload.rows) ? payload.rows : [];
+
+  if (!category) {
+    return { status: 'error', message: '缺少組別名稱 (category)', data: null };
+  }
+
+  const TARGET_ROOT_FOLDER_ID = '1IBaI6zcLu_28HjuaPEcIGLVV3SU5zPGn';
+  const yearFolderName = `${year}學年度`;
+  const standaloneTitle = `${year}學年度_【${category}】_評分總表_共識會議決審`;
+
+  let newSS = null;
+  let targetFolder = null;
+
+  try {
+    const rootFolder = DriveApp.getFolderById(TARGET_ROOT_FOLDER_ID);
+    if (rootFolder) {
+      const subFolders = rootFolder.getFoldersByName(yearFolderName);
+      if (subFolders.hasNext()) {
+        targetFolder = subFolders.next();
+      } else {
+        targetFolder = rootFolder.createFolder(yearFolderName);
+      }
+    }
+  } catch (driveErr) {
+    Logger.log('Drive folder access error: ' + driveErr.toString());
+  }
+
+  if (targetFolder) {
+    try {
+      const existingFiles = targetFolder.getFilesByName(standaloneTitle);
+      if (existingFiles.hasNext()) {
+        newSS = SpreadsheetApp.open(existingFiles.next());
+      }
+    } catch (searchErr) {
+      Logger.log('Search summary sheet error: ' + searchErr.toString());
+    }
+  }
+
+  if (!newSS) {
+    newSS = SpreadsheetApp.create(standaloneTitle);
+    if (targetFolder) {
+      try {
+        const driveFile = DriveApp.getFileById(newSS.getId());
+        driveFile.moveTo(targetFolder);
+        driveFile.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+      } catch (moveErr) {
+        Logger.log('Move/Share summary sheet error: ' + moveErr.toString());
+      }
+    }
+  }
+
+  let targetSheet = newSS.getSheets()[0];
+  try {
+    targetSheet.setName(`${category}_評分總表`.substring(0, 95));
+  } catch (e) {}
+  targetSheet.clear();
+  targetSheet.clearFormats();
+
+  const totalCols = 12;
+  const j1 = judgeHeaders[0];
+  const j2 = judgeHeaders[1];
+  const j3 = judgeHeaders[2];
+
+  // 1. 第 1 列：組別大標題
+  targetSheet.getRange(1, 1, 1, totalCols).merge();
+  targetSheet.getRange(1, 1)
+    .setValue(`${categoryTitle} 評分總表`)
+    .setFontSize(14)
+    .setFontWeight('bold')
+    .setVerticalAlignment('middle');
+  targetSheet.setRowHeight(1, 36);
+
+  // 2. 第 2 列：表頭欄位 (12 欄：標題、評審1~3、平均總分、序位法總分、排名、評語1~3、特色表現獎、特色優選獎)
+  const headers = [
+    '標題',
+    `評審${j1.code}\n(總分 / 序位)`,
+    `評審${j2.code}\n(總分 / 序位)`,
+    `評審${j3.code}\n(總分 / 序位)`,
+    '平均\n總分',
+    '序位法\n總分',
+    '排名',
+    `${j1.code}評語`,
+    `${j2.code}評語`,
+    `${j3.code}評語`,
+    '特色表現獎',
+    '特色優選獎'
+  ];
+
+  const headerRange = targetSheet.getRange(2, 1, 1, totalCols);
+  headerRange.setValues([headers])
+    .setFontWeight('bold')
+    .setFontSize(11)
+    .setHorizontalAlignment('center')
+    .setVerticalAlignment('middle')
+    .setWrap(true);
+  targetSheet.setRowHeight(2, 38);
+
+  // 設定表頭配色 (完全對齊去年評分總表視覺)
+  targetSheet.getRange(2, 1, 1, 4).setBackground('#F9EBC8'); // 標題與三位評審：暖米黃
+  targetSheet.getRange(2, 5, 1, 1).setBackground('#DCE6F1'); // 平均總分：淺粉藍
+  targetSheet.getRange(2, 6, 1, 1).setBackground('#F2F2F2'); // 序位法總分：淺灰
+  targetSheet.getRange(2, 7, 1, 1).setBackground('#D7BDE2'); // 排名：淺紫
+  targetSheet.getRange(2, 8, 1, 5).setBackground('#F5D6D6'); // A/B/C評語與雙獎項：淺粉紅
+
+  // 3. 寫入各隊伍資料列
+  const startDataRow = 3;
+  rows.forEach((item, idx) => {
+    const r = startDataRow + idx;
+    const titleCell = `${item.work_title || ''}\n（${item.school || ''}${item.team_name ? ' - ' + item.team_name : ''}）`;
+
+    const fmtJudgeScore = (score, rank) => {
+      if (score === '' || score === null || score === undefined) return '未評';
+      return `${score} 分\n(序位 ${rank || '-'})`;
+    };
+
+    const rowValues = [
+      titleCell,
+      fmtJudgeScore(item.j1_score, item.j1_rank),
+      fmtJudgeScore(item.j2_score, item.j2_rank),
+      fmtJudgeScore(item.j3_score, item.j3_rank),
+      item.avg_score !== '' && item.avg_score !== undefined ? Number(item.avg_score) : '—',
+      item.rank_sum !== '' && item.rank_sum !== undefined ? Number(item.rank_sum) : '—',
+      item.final_rank !== '' && item.final_rank !== undefined ? Number(item.final_rank) : (idx + 1),
+      item.j1_comment || '',
+      item.j2_comment || '',
+      item.j3_comment || '',
+      item.feature_award || '',
+      item.rank_award || ''
+    ];
+
+    const rRange = targetSheet.getRange(r, 1, 1, totalCols);
+    rRange.setValues([rowValues])
+      .setBackground('#FFFFFF')
+      .setVerticalAlignment('middle')
+      .setWrap(true)
+      .setFontSize(10);
+
+    // 對齊與字重設定
+    targetSheet.getRange(r, 1, 1, 1).setHorizontalAlignment('center').setFontWeight('bold').setFontSize(11);
+    targetSheet.getRange(r, 2, 1, 6).setHorizontalAlignment('center').setFontSize(11);
+    targetSheet.getRange(r, 5, 1, 1).setFontWeight('bold');
+    targetSheet.getRange(r, 7, 1, 1).setFontWeight('bold').setFontSize(12);
+    targetSheet.getRange(r, 8, 1, 3).setHorizontalAlignment('left');
+    targetSheet.getRange(r, 11, 1, 2).setHorizontalAlignment('center').setFontWeight('bold').setFontSize(11);
+
+    // 獲選特優或優等之名次格亮黃底標示 (#FFF200，比照去年總表)
+    if (item.rank_award === '特優' || item.rank_award === '優等') {
+      targetSheet.getRange(r, 7, 1, 1).setBackground('#FFF200');
+    }
+
+    // 特色表現獎底色標示 (簡報之星：淺藍綠；學習之星：淺鵝黃)
+    if (item.feature_award === '簡報之星') {
+      targetSheet.getRange(r, 11, 1, 1).setBackground('#D4EFDF');
+    } else if (item.feature_award === '學習之星') {
+      targetSheet.getRange(r, 11, 1, 1).setBackground('#FCF3CF');
+    }
+  });
+
+  // 4. 最末列：「以下空白」防竄改列 (比照去年總表：標題=以下空白、評審=N+1、序位總分=(N+1)*3、排名=N+1)
+  const nPlusOne = rows.length + 1;
+  const blankRowIdx = startDataRow + rows.length;
+  const blankValues = [
+    '以下空白',
+    nPlusOne,
+    nPlusOne,
+    nPlusOne,
+    '—',
+    nPlusOne * 3,
+    nPlusOne,
+    '',
+    '',
+    '',
+    '',
+    ''
+  ];
+
+  targetSheet.getRange(blankRowIdx, 1, 1, totalCols)
+    .setValues([blankValues])
+    .setBackground('#FFFFFF')
+    .setHorizontalAlignment('center')
+    .setVerticalAlignment('middle')
+    .setFontWeight('bold')
+    .setFontSize(11);
+  targetSheet.setRowHeight(blankRowIdx, 28);
+
+  // 5. 全表加上清晰黑實線邊框 (不含簽核欄，直接作為公文附件)
+  targetSheet.getRange(2, 1, rows.length + 2, totalCols)
+    .setBorder(true, true, true, true, true, true, '#000000', SpreadsheetApp.BorderStyle.SOLID);
+
+  // 6. 設定最佳化欄寬
+  targetSheet.setColumnWidth(1, 195);  // 標題
+  targetSheet.setColumnWidth(2, 85);   // 評審A
+  targetSheet.setColumnWidth(3, 85);   // 評審B
+  targetSheet.setColumnWidth(4, 85);   // 評審C
+  targetSheet.setColumnWidth(5, 75);   // 平均總分
+  targetSheet.setColumnWidth(6, 75);   // 序位法總分
+  targetSheet.setColumnWidth(7, 60);   // 排名
+  targetSheet.setColumnWidth(8, 250);  // A評語
+  targetSheet.setColumnWidth(9, 250);  // B評語
+  targetSheet.setColumnWidth(10, 250); // C評語
+  targetSheet.setColumnWidth(11, 105); // 特色表現獎
+  targetSheet.setColumnWidth(12, 100); // 特色優選獎
+
+  targetSheet.setFrozenRows(2);
+  SpreadsheetApp.flush();
+
+  return {
+    status: 'success',
+    message: '已成功在雲端建立獨立「評分總表」Google 試算表！',
+    data: {
+      sheet_url: newSS.getUrl(),
+      sheet_name: standaloneTitle
+    }
+  };
+}

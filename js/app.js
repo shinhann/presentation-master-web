@@ -39,7 +39,7 @@ window.App = function() {
   return (
     <div className="min-h-screen flex flex-col" style={{ backgroundColor: 'var(--bg-light)' }}>
       {/* 管理端 Header */}
-      <header className="bg-amber-950 text-white px-6 py-3 shadow flex justify-between items-center">
+      <header className="no-print bg-amber-950 text-white px-6 py-3 shadow flex justify-between items-center">
         <div className="flex items-center space-x-3">
           <span className="material-icons text-amber-400 text-2xl">admin_panel_settings</span>
           <div>
@@ -53,11 +53,11 @@ window.App = function() {
       </header>
 
       {/* 管理端 Tab 導覽 */}
-      <div className="bg-white border-b px-6 shadow-sm">
-        <div className="flex space-x-4">
+      <div className="no-print bg-white border-b px-6 shadow-sm">
+        <div className="flex space-x-5 overflow-x-auto">
           <button
             onClick={() => setAdminTab('teams')}
-            className={`py-3 text-xs font-bold border-b-2 flex items-center transition ${
+            className={`py-3 text-sm font-bold border-b-2 flex items-center transition whitespace-nowrap ${
               adminTab === 'teams' ? 'border-amber-900 text-amber-900' : 'border-transparent text-gray-500 hover:text-gray-800'
             }`}
           >
@@ -65,7 +65,7 @@ window.App = function() {
           </button>
           <button
             onClick={() => setAdminTab('judges')}
-            className={`py-3 text-xs font-bold border-b-2 flex items-center transition ${
+            className={`py-3 text-sm font-bold border-b-2 flex items-center transition whitespace-nowrap ${
               adminTab === 'judges' ? 'border-amber-900 text-amber-900' : 'border-transparent text-gray-500 hover:text-gray-800'
             }`}
           >
@@ -73,7 +73,7 @@ window.App = function() {
           </button>
           <button
             onClick={() => setAdminTab('config')}
-            className={`py-3 text-xs font-bold border-b-2 flex items-center transition ${
+            className={`py-3 text-sm font-bold border-b-2 flex items-center transition whitespace-nowrap ${
               adminTab === 'config' ? 'border-amber-900 text-amber-900' : 'border-transparent text-gray-500 hover:text-gray-800'
             }`}
           >
@@ -81,15 +81,15 @@ window.App = function() {
           </button>
           <button
             onClick={() => setAdminTab('results')}
-            className={`py-3 text-xs font-bold border-b-2 flex items-center transition ${
+            className={`py-3 text-sm font-bold border-b-2 flex items-center transition whitespace-nowrap ${
               adminTab === 'results' ? 'border-amber-900 text-amber-900' : 'border-transparent text-gray-500 hover:text-gray-800'
             }`}
           >
-            <span className="material-icons text-base mr-1">assessment</span>成績總表與匯出
+            <span className="material-icons text-base mr-1">assessment</span>共識會議與成績總表
           </button>
           <button
             onClick={() => setAdminTab('health')}
-            className={`py-3 text-xs font-bold border-b-2 flex items-center transition ${
+            className={`py-3 text-sm font-bold border-b-2 flex items-center transition whitespace-nowrap ${
               adminTab === 'health' ? 'border-amber-900 text-amber-900' : 'border-transparent text-gray-500 hover:text-gray-800'
             }`}
           >
@@ -99,7 +99,7 @@ window.App = function() {
       </div>
 
       {/* 管理端內容裝載 */}
-      <main className="flex-1 p-6 max-w-7xl mx-auto w-full">
+      <main className={`flex-1 p-4 md:p-6 mx-auto w-full ${adminTab === 'results' ? 'max-w-[1800px]' : 'max-w-7xl'}`}>
         {adminTab === 'teams' && <window.AdminTeamsView />}
         {adminTab === 'judges' && <window.AdminJudgesView />}
         {adminTab === 'config' && <window.AdminConfigView />}

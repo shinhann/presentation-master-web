@@ -90,6 +90,12 @@ function handleRequest(payload) {
       return processSubmitScore(ss, payload);
     case 'exportJudgeSheet':
       return processExportJudgeSheet(ss, payload);
+    case 'getAdminResults':
+      return processGetAdminResults(ss, payload);
+    case 'saveFinalResults':
+      return processSaveFinalResults(ss, payload);
+    case 'exportGroupSummarySheet':
+      return processExportGroupSummarySheet(ss, payload);
       
     default:
       return { status: 'error', message: `Unknown Action: ${payload.action}`, data: null };

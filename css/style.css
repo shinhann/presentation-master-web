@@ -110,8 +110,14 @@ input[type=range] {
   background: #A1887F;
 }
 
+/* 預設隱藏僅列印時顯示之元件 */
+.only-print,
+.only-print-inline {
+  display: none;
+}
+
 /* =========================================================
-   評審評分表 A4 橫式列印專屬樣式 (跨頁表頭重複、高對比黑框、防斷行)
+   評審評分表 & 共識會議總表 A4 橫式列印專屬樣式 (跨頁表頭重複、高對比黑框、防斷行)
    ========================================================= */
 @page {
   size: A4 landscape;
@@ -134,6 +140,15 @@ input[type=range] {
   /* 隱藏所有非列印區的網頁元件 */
   .no-print {
     display: none !important;
+  }
+
+  /* 顯示僅供紙本列印呈現之純文字區塊 */
+  .only-print {
+    display: block !important;
+  }
+
+  .only-print-inline {
+    display: inline-block !important;
   }
 
   /* 展開列印容器，解除固定定位與捲軸限制，確保跨頁正常分頁 */

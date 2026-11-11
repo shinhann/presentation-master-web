@@ -119,6 +119,25 @@ window.ApiService = {
     return this.request('exportJudgeSheet', payloadData);
   },
 
+  // 12c. 取得後台共識會議成績彙整完整資料 (Teams + Judges + Scores + Final_Results + Config)
+  async getAdminResults(year) {
+    return this.request('getAdminResults', { year: year || window.APP_CONFIG.CURRENT_YEAR });
+  },
+
+  // 12d. 儲存共識會議決審得獎結果至 Final_Results
+  async saveFinalResults(resultsArray, category, year) {
+    return this.request('saveFinalResults', {
+      year: year || window.APP_CONFIG.CURRENT_YEAR,
+      category: category || '',
+      results: resultsArray
+    });
+  },
+
+  // 12e. 產生並取得組別共識會議「評分總表」獨立 Google 試算表連結
+  async exportGroupSummarySheet(payloadData) {
+    return this.request('exportGroupSummarySheet', payloadData);
+  },
+
   // 13. 系統完整性一鍵診斷
   async checkSystemHealth(year) {
     return this.request('checkSystemHealth', { year: year || window.APP_CONFIG.CURRENT_YEAR });
