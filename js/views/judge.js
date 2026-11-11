@@ -1,12 +1,13 @@
 /**
  * 簡報達人評分系統 115學年度 - 評審評分核心工作台 (js/views/judge.js)
- * 升級版：
+ * 升級版 (v76.0-115)：
  * 1. 嚴格鎖定評審負責組別 (不顯示未授權組別)
- * 2. 長者友善大字體設計 (全介面 >= 14px，重點 16px~32px)
+ * 2. 長者友善三段字級切換 (【中】/【大(預設)】/【特大(老花友善)】) + 左側隊伍列表全面放大
  * 3. 影片播放雙重保險 (YouTube/Drive 智慧內嵌 + 醒目大按鈕外連)
  * 4. 40 / 30 / 20 / 10 配分直觀制 (滑桿拉到底即為該項滿分，直接相加 = 100)
  * 5. 115 評分規準側邊抽屜 (內建多元評量表 + 連動後台 Rubric_Link)
  * 6. 三重防遺失機制 (LocalStorage 秒級草稿 + 切換攔截自動存檔 + 關閉視窗提醒)
+ * 7. 本組評分清冊與簽名表 (A4 橫向跨頁表頭重複、斑馬紋交替色、移除賽前審核欄、複合隊伍標題、完整評語、以下空白、簽名處 + SheetJS Excel 匯出)
  */
 
 window.JudgeView = function({ user, onLogout }) {
@@ -16,6 +17,7 @@ window.JudgeView = function({ user, onLogout }) {
   const judgeName = user.name || user.judge_name || `評審 ${judgeCode}`;
   const allowedCategoriesStr = String(user.category_short || user.Category_Short || '').trim();
   const draftStorageKey = `pm115_draft_${judgeCode}`;
+  const fontScaleStorageKey = `pm115_font_scale_${judgeCode}`;
 
   const [teams, setTeams] = useState([]);
   const [selectedGroup, setSelectedGroup] = useState('');
@@ -24,10 +26,86 @@ window.JudgeView = function({ user, onLogout }) {
   const [rubricUrl, setRubricUrl] = useState('');
   const [rulesUrl, setRulesUrl] = useState('');
   const [rubricDrawerOpen, setRubricDrawerOpen] = useState(false);
+  const [printSheetOpen, setPrintSheetOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [toastMsg, setToastMsg] = useState('');
   const [descExpanded, setDescExpanded] = useState(false);
+
+  // 長者友善字級狀態：'md' (中) | 'lg' (大-預設推薦) | 'xl' (特大-老花友善)
+  const [fontScale, setFontScale] = useState(() => {
+    try {
+      return localStorage.getItem(fontScaleStorageKey) || 'lg';
+    } catch (e) {
+      return 'lg';
+    }
+  });
+
+  const handleChangeFontScale = (newScale) => {
+    setFontScale(newScale);
+    try {
+      localStorage.setItem(fontScaleStorageKey, newScale);
+    } catch (e) {
+      // ignore storage error
+    }
+  };
+
+  // 字級對應樣式映射表 (確保左側欄與右側工作台皆隨字級同步放大)
+  const uiScale = useMemo(() => {
+    if (fontScale === 'xl') {
+      return {
+        sidebarWidth: 'w-full lg:w-[470px] xl:w-[500px]',
+        sidebarHeader: 'text-lg',
+        teamIdxBadge: 'text-base px-2.5 py-0.5',
+        teamTitle: 'text-xl leading-snug',
+        teamSchool: 'text-lg',
+        teamScore: 'text-3xl',
+        teamRank: 'text-base',
+        teamStatus: 'text-sm px-3 py-1',
+        cardTitle: 'text-2xl sm:text-3xl',
+        cardBody: 'text-lg leading-relaxed',
+        sliderLabel: 'text-xl',
+        sliderDesc: 'text-base leading-relaxed',
+        sliderInput: 'text-2xl w-20',
+        commentText: 'text-xl leading-relaxed'
+      };
+    }
+    if (fontScale === 'md') {
+      return {
+        sidebarWidth: 'w-full lg:w-96',
+        sidebarHeader: 'text-sm',
+        teamIdxBadge: 'text-xs px-2 py-0.5',
+        teamTitle: 'text-base leading-snug',
+        teamSchool: 'text-sm',
+        teamScore: 'text-xl',
+        teamRank: 'text-xs',
+        teamStatus: 'text-xs px-2.5 py-0.5',
+        cardTitle: 'text-xl sm:text-2xl',
+        cardBody: 'text-base leading-relaxed',
+        sliderLabel: 'text-base',
+        sliderDesc: 'text-sm leading-snug',
+        sliderInput: 'text-xl w-16',
+        commentText: 'text-base leading-relaxed'
+      };
+    }
+    // 預設 'lg' (大 - 推薦 40 歲以上評審舒適閱讀)
+    return {
+      sidebarWidth: 'w-full lg:w-[420px] xl:w-[450px]',
+      sidebarHeader: 'text-base',
+      teamIdxBadge: 'text-sm px-2.5 py-0.5',
+      teamTitle: 'text-lg leading-snug',
+      teamSchool: 'text-base',
+      teamScore: 'text-2xl',
+      teamRank: 'text-sm',
+      teamStatus: 'text-xs sm:text-sm px-3 py-0.5',
+      cardTitle: 'text-xl sm:text-2xl',
+      cardBody: 'text-base sm:text-lg leading-relaxed',
+      sliderLabel: 'text-lg',
+      sliderDesc: 'text-sm sm:text-base leading-snug',
+      sliderInput: 'text-xl w-18',
+      commentText: 'text-lg leading-relaxed'
+    };
+  }, [fontScale]);
 
   // 解析評審被授權的組別清單
   const allowedGroupList = useMemo(() => {
@@ -35,7 +113,6 @@ window.JudgeView = function({ user, onLogout }) {
       return window.APP_CONFIG.ALL_CATEGORIES;
     }
     const rawList = allowedCategoriesStr.split(/[,，、;；]/).map(s => s.trim()).filter(Boolean);
-    // 與標準 6 大組別進行比對
     const matched = window.APP_CONFIG.ALL_CATEGORIES.filter(stdCat =>
       rawList.some(r => stdCat === r || stdCat.includes(r) || r.includes(stdCat))
     );
@@ -90,7 +167,6 @@ window.JudgeView = function({ user, onLogout }) {
       const mergedMap = {};
       if (scoresRes.status === 'success' && Array.isArray(scoresRes.data)) {
         scoresRes.data.forEach(s => {
-          // 若舊資料是 0~100 制 (>40)，自動按比例轉為 40/30/20/10 配分制
           let c = Number(s.score_content ?? 32);
           let e = Number(s.score_expression ?? 24);
           let st = Number(s.score_stage ?? 16);
@@ -188,7 +264,7 @@ window.JudgeView = function({ user, onLogout }) {
     });
   }, [teams, selectedGroup]);
 
-  // 計算當前組別各隊伍在該評審心中的即時排名 (Rank)
+  // 計算當前組別各隊伍在該評審心中的即時序位 (Rank: 分數最高為 1)
   const rankMap = useMemo(() => {
     const scoredList = [];
     filteredTeams.forEach(t => {
@@ -333,29 +409,127 @@ window.JudgeView = function({ user, onLogout }) {
     setDescExpanded(false);
   };
 
-  // 增強版影片嵌入網址解析 (支援 YouTube 各種格式與 Google Drive 各種共用連結)
+  // 增強版影片嵌入網址解析
   const getEmbedVideoUrl = (url) => {
     if (!url) return null;
     const str = String(url).trim();
     if (!str) return null;
 
-    // 1. YouTube (watch?v=, youtu.be/, embed/, shorts/, live/)
     const ytMatch = str.match(/(?:youtube\.com\/(?:watch\?.*v=|embed\/|shorts\/|live\/)|youtu\.be\/)([a-zA-Z0-9_-]{11})/);
     if (ytMatch && ytMatch[1]) {
       return `https://www.youtube.com/embed/${ytMatch[1]}?rel=0`;
     }
 
-    // 2. Google Drive (/file/d/ID/view or ?id=ID)
     const driveFileMatch = str.match(/\/file\/d\/([a-zA-Z0-9_-]+)/) || str.match(/[?&]id=([a-zA-Z0-9_-]+)/);
     if (driveFileMatch && driveFileMatch[1]) {
       return `https://drive.google.com/file/d/${driveFileMatch[1]}/preview`;
     }
 
-    // 3. 若本身已是 http 開頭的 mp4 或可嵌入連結
     if (str.startsWith('http')) {
       return str;
     }
     return null;
+  };
+
+  // 匯出本組評分表 Excel (.xlsx)
+  const handleExportGroupExcel = () => {
+    if (!window.XLSX) {
+      alert('Excel 匯出套件載入中，請稍候再試！');
+      return;
+    }
+    const isCourseGroup = String(selectedGroup || '').includes('校訂課程');
+
+    const headers = [
+      '參賽隊伍與作品標題',
+      '作品說明',
+      ...(isCourseGroup ? ['校訂課程計畫'] : []),
+      '簡報檔',
+      'Mindomo心智圖',
+      '影片檔',
+      '內容 40%',
+      '表達能力 30%',
+      '臺風表現 20%',
+      '製作技巧 10%',
+      '分數加總',
+      '序位法',
+      '評語'
+    ];
+
+    const aoa = [
+      [`【115學年度 簡報達人擂台賽 — ${selectedGroup}】評分表`],
+      [`評審委員：${judgeName} (代號 ${judgeCode})`, '', `匯出日期：${new Date().toLocaleDateString('zh-TW')}`],
+      headers
+    ];
+
+    filteredTeams.forEach((team, idx) => {
+      const tid = team.team_id || team.Team_ID;
+      const sc = scoresMap[tid];
+      const seqStr = `第 ${String(idx + 1).padStart(2, '0')} 隊`;
+      const schoolStr = team.school || team.School || '';
+      const teamNameStr = team.team_name || team.Team_Name || '';
+      const titleStr = team.work_title || team.Work_Title || '';
+      const compositeTitle = `${seqStr}｜${schoolStr}${teamNameStr ? `【${teamNameStr}】` : ''}\n${titleStr}`;
+      const descStr = String(team.description || team.Description || '').trim();
+
+      const cScore = sc ? sc.score_content : '';
+      const eScore = sc ? sc.score_expression : '';
+      const stScore = sc ? sc.score_stage : '';
+      const tScore = sc ? sc.score_technique : '';
+      const totalScore = sc ? calculateTotal(sc) : 0;
+      const rankVal = sc ? (rankMap[tid] || '') : '';
+      const awardPrefix = sc && sc.award ? `【推薦：${sc.award}】\n` : '';
+      const commentStr = sc ? `${awardPrefix}${sc.comment || ''}` : '';
+
+      const row = [
+        compositeTitle,
+        descStr,
+        ...(isCourseGroup ? [team.Course_Plan_Link || team.course_plan_link || ''] : []),
+        team.Slides_Link || team.slides_link || '',
+        team.MindMap_Link || team.mindmap_link || '',
+        team.Video_Link || team.video_link || '',
+        cScore,
+        eScore,
+        stScore,
+        tScore,
+        totalScore,
+        rankVal,
+        commentStr
+      ];
+      aoa.push(row);
+    });
+
+    // 以下空白列
+    const blankRow = new Array(headers.length).fill('');
+    blankRow[0] = '以下空白';
+    aoa.push(blankRow);
+
+    // 簽名列
+    const sigRow = new Array(headers.length).fill('');
+    sigRow[0] = '請評審委員在分數下方簽名：';
+    sigRow[isCourseGroup ? 6 : 5] = '（評審簽章處）';
+    aoa.push([]);
+    aoa.push(sigRow);
+
+    const ws = window.XLSX.utils.aoa_to_sheet(aoa);
+    ws['!cols'] = [
+      { wch: 28 }, // 參賽隊伍與作品標題
+      { wch: 42 }, // 作品說明
+      ...(isCourseGroup ? [{ wch: 16 }] : []),
+      { wch: 16 }, // 簡報檔
+      { wch: 16 }, // 心智圖
+      { wch: 16 }, // 影片檔
+      { wch: 11 }, // 內容 40%
+      { wch: 13 }, // 表達能力 30%
+      { wch: 13 }, // 臺風表現 20%
+      { wch: 13 }, // 製作技巧 10%
+      { wch: 11 }, // 分數加總
+      { wch: 10 }, // 序位法
+      { wch: 48 }  // 評語
+    ];
+
+    const wb = window.XLSX.utils.book_new();
+    window.XLSX.utils.book_append_sheet(wb, ws, `${selectedGroup}_評分表`);
+    window.XLSX.writeFile(wb, `115學年度_${selectedGroup}_評審${judgeCode}_${judgeName}_評分表.xlsx`);
   };
 
   const savedCount = filteredTeams.filter(t => {
@@ -377,541 +551,603 @@ window.JudgeView = function({ user, onLogout }) {
   const rawVideoUrl = activeTeam ? (activeTeam.Video_Link || activeTeam.video_link || '') : '';
   const embedUrl = getEmbedVideoUrl(rawVideoUrl);
   const activeDesc = activeTeam ? String(activeTeam.description || activeTeam.Description || '').trim() : '';
+  const isCourseGroup = String(selectedGroup || '').includes('校訂課程');
 
   return (
     <div className="min-h-screen flex flex-col text-base" style={{ backgroundColor: 'var(--bg-light)' }}>
-      {/* Toast 浮動提示 (加大字體) */}
+      {/* Toast 浮動提示 */}
       {toastMsg && (
-        <div className="fixed top-5 right-5 z-50 bg-gray-900 text-white px-5 py-3.5 rounded-xl shadow-2xl flex items-center text-base font-bold border border-gray-700">
+        <div className="no-print fixed top-5 right-5 z-50 bg-gray-900 text-white px-5 py-3.5 rounded-xl shadow-2xl flex items-center text-base font-bold border border-gray-700">
           <span className="material-icons text-emerald-400 mr-2 text-xl">check_circle</span>
           {toastMsg}
         </div>
       )}
 
-      {/* 1. App Bar 頂部導覽列 */}
-      <header className="bg-amber-950 text-white px-6 py-3.5 shadow-md flex flex-col md:flex-row justify-between items-start md:items-center gap-3">
-        <div className="flex items-center space-x-3">
-          <span className="material-icons text-amber-400 text-3xl">workspace_premium</span>
-          <div>
-            <h1 className="text-lg sm:text-xl font-bold tracking-wide">
-              115學年度 簡報達人評分系統 — {judgeName} (代號 {judgeCode})
-            </h1>
-            <p className="text-sm text-amber-200 font-medium">
-              負責評審組別：{allowedGroupList.join('、')}
-            </p>
+      {/* =========================================================
+          主工作台外層 (當開啟評分表列印時標記 no-print，確保列印只印評分表)
+         ========================================================= */}
+      <div className="no-print flex-1 flex flex-col min-h-screen">
+        {/* 1. App Bar 頂部導覽列 */}
+        <header className="bg-amber-950 text-white px-6 py-3.5 shadow-md flex flex-col xl:flex-row justify-between items-start xl:items-center gap-3">
+          <div className="flex items-center space-x-3">
+            <span className="material-icons text-amber-400 text-3xl">workspace_premium</span>
+            <div>
+              <h1 className="text-lg sm:text-xl font-bold tracking-wide">
+                115學年度 簡報達人評分系統 — {judgeName} (代號 {judgeCode})
+              </h1>
+              <p className="text-sm text-amber-200 font-medium">
+                負責評審組別：{allowedGroupList.join('、')}
+              </p>
+            </div>
           </div>
-        </div>
-        <div className="flex flex-wrap items-center gap-2.5">
-          <button
-            onClick={() => setRubricDrawerOpen(true)}
-            className="bg-amber-500 hover:bg-amber-400 text-amber-950 font-black text-sm px-4 py-2 rounded-lg flex items-center shadow-sm transition cursor-pointer"
-          >
-            <span className="material-icons text-base mr-1.5">menu_book</span>
-            📋 查看評分標準規準
-          </button>
-          <button
-            onClick={loadData}
-            className="bg-amber-900 hover:bg-amber-800 text-amber-100 text-sm px-3.5 py-2 rounded-lg flex items-center font-semibold transition cursor-pointer"
-          >
-            <span className="material-icons text-base mr-1">refresh</span>同步雲端
-          </button>
-          <button
-            onClick={onLogout}
-            className="bg-red-700 hover:bg-red-800 text-white text-sm px-3.5 py-2 rounded-lg flex items-center font-bold transition shadow-xs cursor-pointer"
-          >
-            <span className="material-icons text-base mr-1">logout</span>登出
-          </button>
-        </div>
-      </header>
 
-      {/* 2. 組別切換與進度條 (嚴格只顯示該評審被授權的組別！) */}
-      <div className="bg-white border-b px-6 py-3 flex flex-wrap justify-between items-center gap-4 shadow-2xs">
-        <div className="flex flex-wrap items-center gap-2.5">
-          <span className="text-sm font-bold text-gray-700 flex items-center">
-            <span className="material-icons text-base mr-1 text-amber-900">folder_special</span>
-            您的負責組別：
-          </span>
-          {allowedGroupList.map(g => (
+          <div className="flex flex-wrap items-center gap-2.5">
+            {/* 長者友善三段字級切換器 */}
+            <div className="flex items-center bg-amber-900/90 border border-amber-700 rounded-xl p-1 mr-1">
+              <span className="text-xs sm:text-sm text-amber-200 font-bold px-2 flex items-center">
+                <span className="material-icons text-base mr-1">format_size</span>字體大小：
+              </span>
+              {[
+                { id: 'md', label: '中' },
+                { id: 'lg', label: '大 (預設)' },
+                { id: 'xl', label: '特大 (老花友善)' }
+              ].map(opt => (
+                <button
+                  key={opt.id}
+                  type="button"
+                  onClick={() => handleChangeFontScale(opt.id)}
+                  className={`px-3 py-1.5 rounded-lg text-sm font-black transition cursor-pointer ${
+                    fontScale === opt.id
+                      ? 'bg-amber-400 text-amber-950 shadow-xs'
+                      : 'text-amber-100 hover:bg-amber-800'
+                  }`}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+
             <button
-              key={g}
-              onClick={() => {
-                const firstInGroup = teams.find(t => {
-                  const cat = String(t.category || t.Category || t.group_name || t.Group_Name || '').trim();
-                  return cat === g || cat.includes(g);
-                });
-                handleSafeSwitchTeam(firstInGroup ? (firstInGroup.team_id || firstInGroup.Team_ID) : '', g);
-              }}
-              className={`px-4 py-2 rounded-xl text-sm font-bold transition cursor-pointer ${
-                selectedGroup === g
-                  ? 'bg-amber-900 text-white shadow-sm'
-                  : 'bg-gray-100 text-gray-800 hover:bg-gray-200'
-              }`}
+              onClick={() => setPrintSheetOpen(true)}
+              className="bg-emerald-600 hover:bg-emerald-500 text-white font-black text-sm px-4 py-2 rounded-lg flex items-center shadow-sm transition cursor-pointer"
             >
-              {g}
+              <span className="material-icons text-base mr-1.5">print</span>
+              🖨️ 產生/列印本組評分表 (簽名單)
             </button>
-          ))}
-        </div>
 
-        {/* 進度統計 */}
-        <div className="flex items-center space-x-3 text-sm">
-          <span className="text-gray-700 font-bold">
-            本組完稿進度：<strong className="text-emerald-700 text-base font-black">{savedCount}</strong> / {filteredTeams.length} 隊
-          </span>
-          <div className="w-32 h-3 bg-gray-200 rounded-full overflow-hidden">
-            <div
-              className="h-full bg-emerald-600 transition-all duration-300"
-              style={{ width: `${filteredTeams.length > 0 ? (savedCount / filteredTeams.length) * 100 : 0}%` }}
-            />
+            <button
+              onClick={() => setRubricDrawerOpen(true)}
+              className="bg-amber-500 hover:bg-amber-400 text-amber-950 font-black text-sm px-4 py-2 rounded-lg flex items-center shadow-sm transition cursor-pointer"
+            >
+              <span className="material-icons text-base mr-1.5">menu_book</span>
+              📋 查看評分標準規準
+            </button>
+
+            <button
+              onClick={loadData}
+              className="bg-amber-900 hover:bg-amber-800 text-amber-100 text-sm px-3.5 py-2 rounded-lg flex items-center font-semibold transition cursor-pointer"
+            >
+              <span className="material-icons text-base mr-1">refresh</span>同步雲端
+            </button>
+
+            <button
+              onClick={onLogout}
+              className="bg-red-700 hover:bg-red-800 text-white text-sm px-3.5 py-2 rounded-lg flex items-center font-bold transition shadow-xs cursor-pointer"
+            >
+              <span className="material-icons text-base mr-1">logout</span>登出
+            </button>
           </div>
-        </div>
-      </div>
+        </header>
 
-      {/* 3. 主工作台：左右雙欄 Split-Screen */}
-      <div className="flex-1 flex flex-col lg:flex-row overflow-hidden p-4 gap-5 max-w-[1680px] w-full mx-auto">
-        
-        {/* 左側欄：隊伍清單與即時序位 (字體放大 >= 14px) */}
-        <div className="w-full lg:w-96 bg-white rounded-xl border shadow-xs flex flex-col overflow-hidden shrink-0">
-          <div className="p-3.5 bg-gray-50 border-b flex justify-between items-center">
-            <span className="text-sm font-bold text-gray-800">
-              {selectedGroup} 隊伍列表 ({filteredTeams.length}隊)
+        {/* 2. 組別切換與進度條 (嚴格只顯示該評審被授權的組別！) */}
+        <div className="bg-white border-b px-6 py-3 flex flex-wrap justify-between items-center gap-4 shadow-2xs">
+          <div className="flex flex-wrap items-center gap-2.5">
+            <span className="text-base font-bold text-gray-800 flex items-center">
+              <span className="material-icons text-lg mr-1 text-amber-900">folder_special</span>
+              您的負責組別：
             </span>
-            <span className="text-xs text-gray-500 font-medium">點選切換評分</span>
+            {allowedGroupList.map(g => (
+              <button
+                key={g}
+                onClick={() => {
+                  const firstInGroup = teams.find(t => {
+                    const cat = String(t.category || t.Category || t.group_name || t.Group_Name || '').trim();
+                    return cat === g || cat.includes(g);
+                  });
+                  handleSafeSwitchTeam(firstInGroup ? (firstInGroup.team_id || firstInGroup.Team_ID) : '', g);
+                }}
+                className={`px-4 py-2 rounded-xl text-base font-bold transition cursor-pointer ${
+                  selectedGroup === g
+                    ? 'bg-amber-900 text-white shadow-sm'
+                    : 'bg-gray-100 text-gray-800 hover:bg-gray-200'
+                }`}
+              >
+                {g}
+              </button>
+            ))}
           </div>
-          <div className="flex-1 overflow-y-auto divide-y divide-gray-100 max-h-[340px] lg:max-h-none">
-            {filteredTeams.length === 0 ? (
-              <div className="p-8 text-center text-sm text-gray-500">此組別目前尚無參賽隊伍</div>
-            ) : (
-              filteredTeams.map((team, idx) => {
-                const tid = team.team_id || team.Team_ID;
-                const sc = scoresMap[tid];
-                const isSelected = activeTeam && (activeTeam.team_id || activeTeam.Team_ID) === tid;
-                const rank = rankMap[tid];
-                const teamTotal = sc ? calculateTotal(sc) : null;
 
-                return (
-                  <div
-                    key={tid}
-                    onClick={() => handleSafeSwitchTeam(tid)}
-                    className={`p-4 cursor-pointer transition flex justify-between items-center ${
-                      isSelected
-                        ? 'bg-amber-50 border-l-4 border-amber-900'
-                        : 'hover:bg-gray-50'
-                    }`}
-                  >
-                    <div className="space-y-1.5 pr-3 min-w-0 flex-1">
-                      <div className="flex items-center space-x-2">
-                        <span className="text-xs font-mono font-bold px-2 py-0.5 bg-gray-200 text-gray-800 rounded">
-                          #{idx + 1}
-                        </span>
-                        <p className="font-bold text-base text-gray-900 truncate">
+          {/* 進度統計與快速列印入口 */}
+          <div className="flex flex-wrap items-center gap-4 text-sm sm:text-base">
+            <div className="flex items-center space-x-3">
+              <span className="text-gray-800 font-bold">
+                本組完稿進度：<strong className="text-emerald-700 text-lg font-black">{savedCount}</strong> / {filteredTeams.length} 隊
+              </span>
+              <div className="w-32 h-3.5 bg-gray-200 rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-emerald-600 transition-all duration-300"
+                  style={{ width: `${filteredTeams.length > 0 ? (savedCount / filteredTeams.length) * 100 : 0}%` }}
+                />
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => setPrintSheetOpen(true)}
+              className="px-3.5 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-900 border border-emerald-300 rounded-xl text-sm font-black flex items-center transition cursor-pointer"
+            >
+              <span className="material-icons text-base mr-1">table_view</span>
+              預覽/列印本組總表 ↗
+            </button>
+          </div>
+        </div>
+
+        {/* 3. 主工作台：左右雙欄 Split-Screen */}
+        <div className="flex-1 flex flex-col lg:flex-row overflow-hidden p-4 gap-5 max-w-[1760px] w-full mx-auto">
+          
+          {/* 左側欄：隊伍清單與即時序位 (根據字級自動拓寬並放大字體) */}
+          <div className={`${uiScale.sidebarWidth} bg-white rounded-xl border shadow-xs flex flex-col overflow-hidden shrink-0 transition-all duration-200`}>
+            <div className="p-4 bg-amber-50/70 border-b flex justify-between items-center">
+              <span className={`${uiScale.sidebarHeader} font-black text-amber-950`}>
+                {selectedGroup} ({filteredTeams.length} 隊)
+              </span>
+              <span className="text-sm text-gray-600 font-bold">點選隊伍切換</span>
+            </div>
+            <div className="flex-1 overflow-y-auto divide-y divide-gray-200 max-h-[380px] lg:max-h-none">
+              {filteredTeams.length === 0 ? (
+                <div className="p-8 text-center text-base text-gray-500 font-bold">此組別目前尚無參賽隊伍</div>
+              ) : (
+                filteredTeams.map((team, idx) => {
+                  const tid = team.team_id || team.Team_ID;
+                  const sc = scoresMap[tid];
+                  const isSelected = activeTeam && (activeTeam.team_id || activeTeam.Team_ID) === tid;
+                  const rank = rankMap[tid];
+                  const teamTotal = sc ? calculateTotal(sc) : null;
+                  const schoolName = team.school || team.School || '';
+                  const teamName = team.team_name || team.Team_Name || '';
+
+                  return (
+                    <div
+                      key={tid}
+                      onClick={() => handleSafeSwitchTeam(tid)}
+                      className={`p-4 cursor-pointer transition flex justify-between items-start gap-3 ${
+                        isSelected
+                          ? 'bg-amber-100/80 border-l-8 border-amber-900'
+                          : idx % 2 === 1
+                          ? 'bg-stone-50/70 hover:bg-amber-50/40'
+                          : 'bg-white hover:bg-amber-50/40'
+                      }`}
+                    >
+                      <div className="space-y-1.5 min-w-0 flex-1">
+                        {/* 第一行：隊伍序號 + 學校與隊伍名稱 */}
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          <span className={`${uiScale.teamIdxBadge} font-mono font-black bg-amber-900 text-white rounded-md shrink-0`}>
+                            第 {String(idx + 1).padStart(2, '0')} 隊
+                          </span>
+                          <span className={`${uiScale.teamSchool} text-gray-700 font-bold break-words`}>
+                            {schoolName}{teamName ? `【${teamName}】` : ''}
+                          </span>
+                        </div>
+
+                        {/* 第二行：作品標題 (支援雙行完整顯示，不輕易截斷) */}
+                        <p className={`font-black ${uiScale.teamTitle} text-gray-950 line-clamp-2 pt-0.5`}>
                           {team.work_title || team.Work_Title}
                         </p>
-                      </div>
-                      <p className="text-sm text-gray-600 font-medium truncate pl-1">
-                        🏫 {team.school || team.School}
-                      </p>
-                      {sc && sc.award && (
-                        <span className="inline-block text-xs px-2 py-0.5 bg-amber-100 text-amber-900 rounded font-bold">
-                          ✨ 推薦：{sc.award}
-                        </span>
-                      )}
-                    </div>
 
-                    {/* 右側：分數、即時序位與狀態燈號 */}
-                    <div className="text-right shrink-0 space-y-1">
-                      {teamTotal !== null ? (
-                        <div>
-                          <span className="text-lg font-black text-amber-900">{teamTotal}</span>
-                          <span className="text-xs text-gray-500 ml-0.5">分</span>
-                          {rank && (
-                            <div className="text-xs font-bold text-blue-700">
-                              暫居第 {rank}
-                            </div>
-                          )}
-                        </div>
-                      ) : (
-                        <div className="text-sm text-gray-400 font-mono">-- 分</div>
-                      )}
-
-                      <div>
-                        {!sc ? (
-                          <span className="inline-block px-2.5 py-0.5 text-xs font-bold rounded-full bg-gray-100 text-gray-600">
-                            ⚪ 未評
-                          </span>
-                        ) : sc.status === 'saved' ? (
-                          <span className="inline-block px-2.5 py-0.5 text-xs font-bold rounded-full bg-emerald-100 text-emerald-800">
-                            🟢 完稿
-                          </span>
-                        ) : (
-                          <span className="inline-block px-2.5 py-0.5 text-xs font-bold rounded-full bg-amber-100 text-amber-900">
-                            🟡 暫存未送出
+                        {sc && sc.award && (
+                          <span className="inline-block text-sm px-2.5 py-0.5 bg-amber-200 text-amber-950 rounded-md font-black">
+                            ✨ 推薦：{sc.award}
                           </span>
                         )}
                       </div>
-                    </div>
-                  </div>
-                );
-              })
-            )}
-          </div>
-        </div>
 
-        {/* 右側欄：作品檢視與評分面板 */}
-        {activeTeam ? (
-          <div className="flex-1 overflow-y-auto space-y-5 pr-1">
-            
-            {/* 卡片 1: 作品基本資料、外部檔案按鈕與影片播放器 */}
-            <div className="bg-white p-6 rounded-xl border shadow-xs space-y-4">
-              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 border-b pb-3.5">
-                <div>
-                  <div className="flex items-center space-x-2.5">
-                    <span className="px-3 py-1 bg-amber-100 text-amber-900 rounded-lg text-sm font-bold">
-                      {activeTeam.category || activeTeam.Category || activeTeam.group_name || activeTeam.Group_Name}
-                    </span>
-                    <span className="text-base font-bold text-gray-700">
-                      🏫 {activeTeam.school || activeTeam.School}
-                    </span>
-                  </div>
-                  <h2 className="text-xl sm:text-2xl font-black text-gray-900 mt-1.5">
-                    {activeTeam.work_title || activeTeam.Work_Title}
-                  </h2>
-                </div>
+                      {/* 右側：分數、即時序位與狀態燈號 */}
+                      <div className="text-right shrink-0 space-y-1.5 pl-1">
+                        {teamTotal !== null ? (
+                          <div>
+                            <span className={`${uiScale.teamScore} font-black text-amber-900`}>{teamTotal}</span>
+                            <span className="text-sm text-gray-600 font-bold ml-0.5">分</span>
+                            {rank && (
+                              <div className={`${uiScale.teamRank} font-black text-blue-800 bg-blue-50 px-2 py-0.5 rounded border border-blue-200 mt-0.5`}>
+                                序位第 {rank}
+                              </div>
+                            )}
+                          </div>
+                        ) : (
+                          <div className="text-base text-gray-400 font-mono font-bold">-- 分</div>
+                        )}
 
-                {/* 當前隊伍存檔狀態標示 */}
-                <div className="text-right">
-                  {currentScore.status === 'saved' ? (
-                    <span className="px-3 py-1.5 bg-emerald-50 border border-emerald-200 rounded-lg text-sm text-emerald-800 font-bold flex items-center">
-                      <span className="material-icons text-base mr-1">cloud_done</span>
-                      已儲存於雲端試算表
-                    </span>
-                  ) : (currentScore.status === 'draft' || currentScore.status === 'modified') ? (
-                    <span className="px-3 py-1.5 bg-amber-50 border border-amber-300 rounded-lg text-sm text-amber-900 font-bold flex items-center">
-                      <span className="material-icons text-base mr-1">edit_note</span>
-                      本機已自動暫存 (請記得點下方儲存至雲端)
-                    </span>
-                  ) : null}
-                </div>
-              </div>
-
-              {/* 作品說明 (手風琴展開/收合，字體 15px) */}
-              {activeDesc ? (
-                <div className="bg-gray-50 p-4 rounded-xl border text-sm sm:text-base space-y-1.5">
-                  <div className={`text-gray-800 leading-relaxed ${descExpanded ? '' : 'line-clamp-2'}`}>
-                    <strong className="text-gray-900 mr-1">📝 作品說明：</strong>
-                    {activeDesc}
-                  </div>
-                  {activeDesc.length > 50 && (
-                    <button
-                      type="button"
-                      onClick={() => setDescExpanded(!descExpanded)}
-                      className="text-sm text-amber-900 font-bold flex items-center pt-1 hover:underline cursor-pointer"
-                    >
-                      <span className="material-icons text-base mr-0.5">
-                        {descExpanded ? 'expand_less' : 'expand_more'}
-                      </span>
-                      {descExpanded ? '收合作品說明' : '展開完整說明'}
-                    </button>
-                  )}
-                </div>
-              ) : (
-                <div className="text-sm text-gray-400 italic">無提供作品說明文字</div>
-              )}
-
-              {/* 參賽檔案連結按鈕列 (加大按鈕與 14px 字體) */}
-              <div className="flex flex-wrap items-center gap-3 pt-1">
-                <span className="text-sm font-bold text-gray-700 mr-1">📂 作品檔案檢視：</span>
-                
-                {activeTeam.MindMap_Link ? (
-                  <a
-                    href={activeTeam.MindMap_Link}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="px-4 py-2 bg-sky-50 text-sky-900 rounded-xl border border-sky-300 hover:bg-sky-100 text-sm font-bold flex items-center transition shadow-2xs"
-                  >
-                    🧠 Mindomo 心智圖 ↗
-                  </a>
-                ) : (
-                  <span className="px-3 py-1.5 bg-gray-100 text-gray-400 rounded-lg text-sm">無心智圖</span>
-                )}
-
-                {activeTeam.Slides_Link ? (
-                  <a
-                    href={activeTeam.Slides_Link}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="px-4 py-2 bg-amber-50 text-amber-900 rounded-xl border border-amber-300 hover:bg-amber-100 text-sm font-bold flex items-center transition shadow-2xs"
-                  >
-                    📊 簡報檔案 ↗
-                  </a>
-                ) : (
-                  <span className="px-3 py-1.5 bg-gray-100 text-gray-400 rounded-lg text-sm">無簡報檔</span>
-                )}
-
-                {activeTeam.Consent_Link && (
-                  <a
-                    href={activeTeam.Consent_Link}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="px-4 py-2 bg-emerald-50 text-emerald-900 rounded-xl border border-emerald-300 hover:bg-emerald-100 text-sm font-bold flex items-center transition shadow-2xs"
-                  >
-                    📄 授權同意書 ↗
-                  </a>
-                )}
-
-                {activeTeam.Course_Plan_Link ? (
-                  <a
-                    href={activeTeam.Course_Plan_Link}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="px-4 py-2 bg-purple-50 text-purple-900 rounded-xl border border-purple-300 hover:bg-purple-100 text-sm font-bold flex items-center transition shadow-2xs"
-                  >
-                    📑 校訂課程計畫 PDF ↗
-                  </a>
-                ) : (
-                  String(activeTeam.category || activeTeam.group_name || '').includes('校訂課程') && (
-                    <span className="px-3 py-1.5 bg-red-100 text-red-700 rounded-lg text-sm font-bold">⚠️ 未附校訂課程計畫</span>
-                  )
-                )}
-              </div>
-
-              {/* 影片播放區：雙重保險 (大按鈕外連 + 內嵌播放視窗) */}
-              <div className="pt-2 space-y-3">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 bg-red-50/70 p-3.5 rounded-xl border border-red-200">
-                  <div className="flex items-center space-x-2">
-                    <span className="material-icons text-red-600 text-2xl">smart_display</span>
-                    <div>
-                      <span className="text-sm font-bold text-gray-900 block">參賽作品發表影片 (5~8分鐘)</span>
-                      <span className="text-xs text-gray-600">若下方內嵌畫面因雲端權限無法直接播放，請點擊右側紅色按鈕於新視窗全螢幕觀看</span>
-                    </div>
-                  </div>
-                  {rawVideoUrl ? (
-                    <a
-                      href={rawVideoUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="px-5 py-2.5 bg-red-600 hover:bg-red-700 text-white rounded-xl text-sm font-black flex items-center justify-center shadow-sm transition shrink-0"
-                    >
-                      🎬 點此另開大視窗全螢幕看影片 ↗
-                    </a>
-                  ) : (
-                    <span className="px-4 py-2 bg-gray-200 text-gray-600 rounded-lg text-sm font-bold">
-                      ⚠️ 此隊伍未提供影片連結
-                    </span>
-                  )}
-                </div>
-
-                {embedUrl && (
-                  <div className="aspect-video w-full max-w-4xl bg-black rounded-xl overflow-hidden shadow-md border border-gray-300">
-                    <iframe
-                      src={embedUrl}
-                      title="參賽作品發表影片"
-                      className="w-full h-full"
-                      allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; fullscreen"
-                      allowFullScreen
-                    />
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* 卡片 2: 四大指標配分直觀制 (40 / 30 / 20 / 10 = 100分) */}
-            <div className="bg-white p-6 rounded-xl border shadow-xs space-y-5">
-              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 border-b pb-4">
-                <div>
-                  <div className="flex items-center space-x-3">
-                    <h3 className="font-black text-gray-900 text-lg sm:text-xl flex items-center">
-                      <span className="material-icons text-amber-900 mr-1.5 text-2xl">tune</span>
-                      四項指標配分評量 (滿分 100 分)
-                    </h3>
-                    <button
-                      type="button"
-                      onClick={() => setRubricDrawerOpen(true)}
-                      className="px-3 py-1 bg-amber-100 hover:bg-amber-200 text-amber-900 rounded-lg text-sm font-bold flex items-center transition cursor-pointer"
-                    >
-                      <span className="material-icons text-base mr-1">help_outline</span>
-                      對照評分規準細項
-                    </button>
-                  </div>
-                  <p className="text-sm text-gray-600 mt-1">
-                    各項滑桿拉到最右即為該項最高滿分（40分 + 30分 + 20分 + 10分 = 100分）
-                  </p>
-                </div>
-
-                <div className="text-right bg-amber-50 px-5 py-2.5 rounded-xl border-2 border-amber-300 shrink-0">
-                  <span className="text-xs font-bold text-amber-900 block">目前合計總分</span>
-                  <div className="text-3xl font-black text-amber-900">
-                    {calculateTotal(currentScore)} <span className="text-sm font-bold">/ 100 分</span>
-                  </div>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                {[
-                  {
-                    key: 'score_content',
-                    label: '一、簡報內容 (最高 40 分)',
-                    max: 40,
-                    ticks: [0, 10, 20, 30, 40],
-                    desc: '輔助材料完整性(10%)、資料考證與邏輯(10%)、觀點獨特性與創新(10%)、主題切合度(5%)、心智圖解說運用(5%)'
-                  },
-                  {
-                    key: 'score_expression',
-                    label: '二、表達能力 (最高 30 分)',
-                    max: 30,
-                    ticks: [0, 10, 15, 20, 25, 30],
-                    desc: '內容內化程度與情感渲染力(10%)、口語流暢度與語速節奏(10%)、敘事架構與邏輯技巧(10%)'
-                  },
-                  {
-                    key: 'score_stage',
-                    label: '三、台風表現 (最高 20 分)',
-                    max: 20,
-                    ticks: [0, 5, 10, 15, 20],
-                    desc: '自信與說服力、鏡頭眼神交流、肢體語言與團隊合作默契(15%)、時間掌控 5~8 分鐘(5%)'
-                  },
-                  {
-                    key: 'score_technique',
-                    label: '四、製作技巧 (最高 10 分)',
-                    max: 10,
-                    ticks: [0, 2, 4, 6, 8, 10],
-                    desc: '影片剪輯流暢度、鏡頭運用、簡報排版視覺美感，以及資料引用出處、CC授權與AI標示規範(10%)'
-                  }
-                ].map(item => {
-                  const val = Number(currentScore[item.key] ?? 0);
-                  return (
-                    <div key={item.key} className="p-4 bg-gray-50 rounded-xl border border-gray-200 space-y-3">
-                      <div className="flex justify-between items-start gap-2">
-                        <div className="space-y-1">
-                          <div className="text-base font-black text-gray-900">{item.label}</div>
-                          <div className="text-sm text-gray-600 leading-snug">{item.desc}</div>
+                        <div>
+                          {!sc ? (
+                            <span className={`inline-block ${uiScale.teamStatus} font-bold rounded-full bg-gray-100 text-gray-600 border border-gray-300`}>
+                              ⚪ 未評
+                            </span>
+                          ) : sc.status === 'saved' ? (
+                            <span className={`inline-block ${uiScale.teamStatus} font-bold rounded-full bg-emerald-100 text-emerald-900 border border-emerald-300`}>
+                              🟢 完稿
+                            </span>
+                          ) : (
+                            <span className={`inline-block ${uiScale.teamStatus} font-bold rounded-full bg-amber-100 text-amber-900 border border-amber-300`}>
+                              🟡 暫存
+                            </span>
+                          )}
                         </div>
-                        <div className="flex items-center space-x-1.5 shrink-0 bg-white p-1 rounded-lg border shadow-2xs">
-                          <button
-                            type="button"
-                            onClick={() => updateScoreField(item.key, val - 1)}
-                            className="w-8 h-8 rounded-md bg-gray-100 hover:bg-gray-200 text-base font-black flex items-center justify-center cursor-pointer"
-                          >
-                            -
-                          </button>
-                          <input
-                            type="number"
-                            min="0"
-                            max={item.max}
-                            step="0.5"
-                            value={val}
-                            onChange={(e) => updateScoreField(item.key, e.target.value)}
-                            className="w-16 text-center font-black text-xl text-amber-900 bg-white focus:outline-none"
-                          />
-                          <button
-                            type="button"
-                            onClick={() => updateScoreField(item.key, val + 1)}
-                            className="w-8 h-8 rounded-md bg-gray-100 hover:bg-gray-200 text-base font-black flex items-center justify-center cursor-pointer"
-                          >
-                            +
-                          </button>
-                        </div>
-                      </div>
-
-                      <input
-                        type="range"
-                        min="0"
-                        max={item.max}
-                        step="0.5"
-                        value={val}
-                        onChange={(e) => updateScoreField(item.key, e.target.value)}
-                        className="w-full h-2.5 accent-amber-900 cursor-pointer"
-                      />
-                      <div className="flex justify-between text-xs text-gray-500 font-bold font-mono px-0.5">
-                        {item.ticks.map(tk => (
-                          <span key={tk}>{tk}分</span>
-                        ))}
                       </div>
                     </div>
                   );
-                })}
-              </div>
+                })
+              )}
             </div>
+          </div>
 
-            {/* 卡片 3: 質性評語與特色推薦 + 儲存區 */}
-            <div className="bg-white p-6 rounded-xl border shadow-xs space-y-4">
-              <h3 className="font-black text-gray-900 text-lg flex items-center">
-                <span className="material-icons text-amber-900 mr-1.5 text-2xl">rate_review</span>
-                質性評語與 115 特色表現獎推薦
-              </h3>
+          {/* 右側欄：作品檢視與評分面板 */}
+          {activeTeam ? (
+            <div className="flex-1 overflow-y-auto space-y-5 pr-1">
+              
+              {/* 卡片 1: 作品基本資料、外部檔案按鈕與影片播放器 */}
+              <div className="bg-white p-6 rounded-xl border shadow-xs space-y-4">
+                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 border-b pb-3.5">
+                  <div>
+                    <div className="flex flex-wrap items-center gap-2.5">
+                      <span className="px-3 py-1 bg-amber-100 text-amber-900 rounded-lg text-base font-bold">
+                        {activeTeam.category || activeTeam.Category || activeTeam.group_name || activeTeam.Group_Name}
+                      </span>
+                      <span className="text-lg font-bold text-gray-800">
+                        🏫 {activeTeam.school || activeTeam.School}
+                        {(activeTeam.team_name || activeTeam.Team_Name) ? ` 【${activeTeam.team_name || activeTeam.Team_Name}】` : ''}
+                      </span>
+                    </div>
+                    <h2 className={`${uiScale.cardTitle} font-black text-gray-900 mt-2`}>
+                      {activeTeam.work_title || activeTeam.Work_Title}
+                    </h2>
+                  </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-                <div className="md:col-span-1 space-y-2">
-                  <label className="block text-sm font-bold text-gray-800">
-                    ✨ 特色表現獎推薦 (選填)
-                  </label>
-                  <select
-                    value={currentScore.award || ''}
-                    onChange={(e) => updateScoreField('award', e.target.value)}
-                    className="w-full p-3 text-base border rounded-xl bg-white font-bold text-gray-900 shadow-2xs"
-                  >
-                    <option value="">-- 無特別推薦 --</option>
-                    <option value="簡報之星">✨ 簡報之星 (2,000點e幣)</option>
-                    <option value="學習之星">✨ 學習之星 (500點e幣)</option>
-                  </select>
-                  <p className="text-xs text-gray-500 leading-relaxed">
-                    若該隊伍未獲特優/優等，但簡報表現亮眼或達良好水平，可推薦角逐特色表現獎。
-                  </p>
+                  {/* 當前隊伍存檔狀態標示 */}
+                  <div className="text-right shrink-0">
+                    {currentScore.status === 'saved' ? (
+                      <span className="px-3.5 py-2 bg-emerald-50 border border-emerald-300 rounded-xl text-sm sm:text-base text-emerald-900 font-bold flex items-center">
+                        <span className="material-icons text-lg mr-1">cloud_done</span>
+                        已儲存於雲端試算表
+                      </span>
+                    ) : (currentScore.status === 'draft' || currentScore.status === 'modified') ? (
+                      <span className="px-3.5 py-2 bg-amber-50 border border-amber-300 rounded-xl text-sm sm:text-base text-amber-900 font-bold flex items-center">
+                        <span className="material-icons text-lg mr-1">edit_note</span>
+                        本機已暫存草稿 (請記得點下方儲存至雲端)
+                      </span>
+                    ) : null}
+                  </div>
                 </div>
 
-                <div className="md:col-span-2 space-y-2">
-                  <label className="block text-sm font-bold text-gray-800">
-                    💬 評審評語與寶貴建議 <span className="text-gray-500 font-normal">(將匿名提供參賽學生參考)</span>
-                  </label>
-                  <textarea
-                    rows="3"
-                    value={currentScore.comment || ''}
-                    onChange={(e) => updateScoreField('comment', e.target.value)}
-                    placeholder="請輸入對參賽學生的鼓勵、作品亮點或具體改進建議..."
-                    className="w-full p-3 text-base border rounded-xl focus:ring-2 focus:ring-amber-900 focus:outline-none leading-relaxed"
-                  />
-                </div>
-              </div>
+                {/* 作品說明 (手風琴展開/收合) */}
+                {activeDesc ? (
+                  <div className={`bg-gray-50 p-4 rounded-xl border ${uiScale.cardBody} space-y-1.5`}>
+                    <div className={`text-gray-800 whitespace-pre-wrap ${descExpanded ? '' : 'line-clamp-3'}`}>
+                      <strong className="text-gray-900 mr-1">📝 作品說明：</strong>
+                      {activeDesc}
+                    </div>
+                    {activeDesc.length > 60 && (
+                      <button
+                        type="button"
+                        onClick={() => setDescExpanded(!descExpanded)}
+                        className="text-base text-amber-900 font-bold flex items-center pt-1 hover:underline cursor-pointer"
+                      >
+                        <span className="material-icons text-lg mr-0.5">
+                          {descExpanded ? 'expand_less' : 'expand_more'}
+                        </span>
+                        {descExpanded ? '收合作品說明' : '展開完整作品說明'}
+                      </button>
+                    )}
+                  </div>
+                ) : (
+                  <div className="text-base text-gray-400 italic">無提供作品說明文字</div>
+                )}
 
-              {/* 底部提交操作列 */}
-              <div className="pt-4 border-t flex flex-col sm:flex-row justify-between items-center gap-4">
-                <div className="text-sm">
-                  {currentScore.status === 'saved' ? (
-                    <span className="text-emerald-700 font-bold flex items-center">
-                      🟢 此隊伍分數已安全儲存於雲端試算表 (總分：{calculateTotal(currentScore)} 分)
-                    </span>
+                {/* 參賽檔案連結按鈕列 */}
+                <div className="flex flex-wrap items-center gap-3 pt-1">
+                  <span className="text-base font-bold text-gray-800 mr-1">📂 作品檔案檢視：</span>
+                  
+                  {(activeTeam.MindMap_Link || activeTeam.mindmap_link) ? (
+                    <a
+                      href={activeTeam.MindMap_Link || activeTeam.mindmap_link}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="px-4 py-2.5 bg-sky-50 text-sky-900 rounded-xl border border-sky-300 hover:bg-sky-100 text-base font-bold flex items-center transition shadow-2xs"
+                    >
+                      🧠 Mindomo 心智圖 ↗
+                    </a>
                   ) : (
-                    <span className="text-amber-800 font-bold flex items-center">
-                      🟡 您已調整評分 (已自動暫存於本機)，請點擊右側按鈕正式寫入雲端試算表！
-                    </span>
+                    <span className="px-3 py-1.5 bg-gray-100 text-gray-400 rounded-lg text-sm">無心智圖</span>
+                  )}
+
+                  {(activeTeam.Slides_Link || activeTeam.slides_link) ? (
+                    <a
+                      href={activeTeam.Slides_Link || activeTeam.slides_link}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="px-4 py-2.5 bg-amber-50 text-amber-900 rounded-xl border border-amber-300 hover:bg-amber-100 text-base font-bold flex items-center transition shadow-2xs"
+                    >
+                      📊 簡報檔案 ↗
+                    </a>
+                  ) : (
+                    <span className="px-3 py-1.5 bg-gray-100 text-gray-400 rounded-lg text-sm">無簡報檔</span>
+                  )}
+
+                  {(activeTeam.Course_Plan_Link || activeTeam.course_plan_link) ? (
+                    <a
+                      href={activeTeam.Course_Plan_Link || activeTeam.course_plan_link}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="px-4 py-2.5 bg-purple-50 text-purple-900 rounded-xl border border-purple-300 hover:bg-purple-100 text-base font-bold flex items-center transition shadow-2xs"
+                    >
+                      📑 校訂課程計畫 PDF ↗
+                    </a>
+                  ) : (
+                    String(activeTeam.category || activeTeam.group_name || '').includes('校訂課程') && (
+                      <span className="px-3 py-1.5 bg-red-100 text-red-700 rounded-lg text-sm font-bold">⚠️ 未附校訂課程計畫</span>
+                    )
                   )}
                 </div>
 
-                <button
-                  onClick={() => handleSubmitScore(false)}
-                  disabled={saving}
-                  className="w-full sm:w-auto px-8 py-3.5 rounded-xl text-white font-black text-base shadow-lg hover:opacity-95 transition flex items-center justify-center cursor-pointer"
-                  style={{ backgroundColor: 'var(--secondary)' }}
-                >
-                  <span className={`material-icons text-xl mr-2 ${saving ? 'animate-spin' : ''}`}>
-                    {saving ? 'sync' : 'cloud_upload'}
-                  </span>
-                  {saving ? '正在寫入雲端試算表...' : '儲存並提交本隊評分'}
-                </button>
-              </div>
-            </div>
+                {/* 影片播放區：雙重保險 (大按鈕外連 + 內嵌播放視窗) */}
+                <div className="pt-2 space-y-3">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 bg-red-50/70 p-4 rounded-xl border border-red-200">
+                    <div className="flex items-center space-x-2.5">
+                      <span className="material-icons text-red-600 text-3xl">smart_display</span>
+                      <div>
+                        <span className="text-base font-bold text-gray-900 block">參賽作品發表影片 (5~8分鐘)</span>
+                        <span className="text-sm text-gray-700">若下方內嵌畫面因雲端權限無法直接播放，請點擊右側紅色大按鈕於新視窗全螢幕觀看</span>
+                      </div>
+                    </div>
+                    {rawVideoUrl ? (
+                      <a
+                        href={rawVideoUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="px-5 py-3 bg-red-600 hover:bg-red-700 text-white rounded-xl text-base font-black flex items-center justify-center shadow-sm transition shrink-0"
+                      >
+                        🎬 點此另開大視窗全螢幕看影片 ↗
+                      </a>
+                    ) : (
+                      <span className="px-4 py-2 bg-gray-200 text-gray-600 rounded-lg text-base font-bold">
+                        ⚠️ 此隊伍未提供影片連結
+                      </span>
+                    )}
+                  </div>
 
-          </div>
-        ) : (
-          <div className="flex-1 bg-white rounded-xl border flex items-center justify-center text-gray-500 text-base font-bold">
-            請從左側列表點選參賽隊伍開始評分
-          </div>
-        )}
+                  {embedUrl && (
+                    <div className="aspect-video w-full max-w-4xl bg-black rounded-xl overflow-hidden shadow-md border border-gray-300">
+                      <iframe
+                        src={embedUrl}
+                        title="參賽作品發表影片"
+                        className="w-full h-full"
+                        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; fullscreen"
+                        allowFullScreen
+                      />
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* 卡片 2: 四大指標配分直觀制 (40 / 30 / 20 / 10 = 100分) */}
+              <div className="bg-white p-6 rounded-xl border shadow-xs space-y-5">
+                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 border-b pb-4">
+                  <div>
+                    <div className="flex flex-wrap items-center gap-3">
+                      <h3 className="font-black text-gray-900 text-xl sm:text-2xl flex items-center">
+                        <span className="material-icons text-amber-900 mr-1.5 text-2xl">tune</span>
+                        四項指標配分評量 (滿分 100 分)
+                      </h3>
+                      <button
+                        type="button"
+                        onClick={() => setRubricDrawerOpen(true)}
+                        className="px-3.5 py-1.5 bg-amber-100 hover:bg-amber-200 text-amber-900 rounded-lg text-base font-bold flex items-center transition cursor-pointer"
+                      >
+                        <span className="material-icons text-lg mr-1">help_outline</span>
+                        對照評分規準細項
+                      </button>
+                    </div>
+                    <p className="text-base text-gray-600 mt-1">
+                      各項滑桿拉到最右即為該項最高滿分（40分 + 30分 + 20分 + 10分 = 100分）
+                    </p>
+                  </div>
+
+                  <div className="text-right bg-amber-50 px-6 py-3 rounded-xl border-2 border-amber-300 shrink-0">
+                    <span className="text-sm font-bold text-amber-900 block">目前合計總分</span>
+                    <div className="text-3xl sm:text-4xl font-black text-amber-900">
+                      {calculateTotal(currentScore)} <span className="text-base font-bold">/ 100 分</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                  {[
+                    {
+                      key: 'score_content',
+                      label: '一、簡報內容 (最高 40 分)',
+                      max: 40,
+                      ticks: [0, 10, 20, 30, 40],
+                      desc: '輔助材料完整性(10%)、資料考證與邏輯(10%)、觀點獨特性與創新(10%)、主題切合度(5%)、心智圖解說運用(5%)'
+                    },
+                    {
+                      key: 'score_expression',
+                      label: '二、表達能力 (最高 30 分)',
+                      max: 30,
+                      ticks: [0, 10, 15, 20, 25, 30],
+                      desc: '內容內化程度與情感渲染力(10%)、口語流暢度與語速節奏(10%)、敘事架構與邏輯技巧(10%)'
+                    },
+                    {
+                      key: 'score_stage',
+                      label: '三、台風表現 (最高 20 分)',
+                      max: 20,
+                      ticks: [0, 5, 10, 15, 20],
+                      desc: '自信與說服力、鏡頭眼神交流、肢體語言與團隊合作默契(15%)、時間掌控 5~8 分鐘(5%)'
+                    },
+                    {
+                      key: 'score_technique',
+                      label: '四、製作技巧 (最高 10 分)',
+                      max: 10,
+                      ticks: [0, 2, 4, 6, 8, 10],
+                      desc: '影片剪輯流暢度、鏡頭運用、簡報排版視覺美感，以及資料引用出處、CC授權與AI標示規範(10%)'
+                    }
+                  ].map(item => {
+                    const val = Number(currentScore[item.key] ?? 0);
+                    return (
+                      <div key={item.key} className="p-4 bg-gray-50 rounded-xl border border-gray-200 space-y-3">
+                        <div className="flex justify-between items-start gap-2">
+                          <div className="space-y-1">
+                            <div className={`${uiScale.sliderLabel} font-black text-gray-900`}>{item.label}</div>
+                            <div className={`${uiScale.sliderDesc} text-gray-700`}>{item.desc}</div>
+                          </div>
+                          <div className="flex items-center space-x-1.5 shrink-0 bg-white p-1 rounded-lg border shadow-2xs">
+                            <button
+                              type="button"
+                              onClick={() => updateScoreField(item.key, val - 1)}
+                              className="w-9 h-9 rounded-md bg-gray-100 hover:bg-gray-200 text-lg font-black flex items-center justify-center cursor-pointer"
+                            >
+                              -
+                            </button>
+                            <input
+                              type="number"
+                              min="0"
+                              max={item.max}
+                              step="0.5"
+                              value={val}
+                              onChange={(e) => updateScoreField(item.key, e.target.value)}
+                              className={`${uiScale.sliderInput} text-center font-black text-amber-900 bg-white focus:outline-none`}
+                            />
+                            <button
+                              type="button"
+                              onClick={() => updateScoreField(item.key, val + 1)}
+                              className="w-9 h-9 rounded-md bg-gray-100 hover:bg-gray-200 text-lg font-black flex items-center justify-center cursor-pointer"
+                            >
+                              +
+                            </button>
+                          </div>
+                        </div>
+
+                        <input
+                          type="range"
+                          min="0"
+                          max={item.max}
+                          step="0.5"
+                          value={val}
+                          onChange={(e) => updateScoreField(item.key, e.target.value)}
+                          className="w-full h-3 accent-amber-900 cursor-pointer"
+                        />
+                        <div className="flex justify-between text-sm text-gray-600 font-bold font-mono px-0.5">
+                          {item.ticks.map(tk => (
+                            <span key={tk}>{tk}分</span>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* 卡片 3: 質性評語與特色推薦 + 儲存區 */}
+              <div className="bg-white p-6 rounded-xl border shadow-xs space-y-4">
+                <h3 className="font-black text-gray-900 text-xl flex items-center">
+                  <span className="material-icons text-amber-900 mr-1.5 text-2xl">rate_review</span>
+                  質性評語與 115 特色表現獎推薦
+                </h3>
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+                  <div className="md:col-span-1 space-y-2">
+                    <label className="block text-base font-bold text-gray-800">
+                      ✨ 特色表現獎推薦 (選填)
+                    </label>
+                    <select
+                      value={currentScore.award || ''}
+                      onChange={(e) => updateScoreField('award', e.target.value)}
+                      className="w-full p-3.5 text-base sm:text-lg border rounded-xl bg-white font-bold text-gray-900 shadow-2xs"
+                    >
+                      <option value="">-- 無特別推薦 --</option>
+                      <option value="簡報之星">✨ 簡報之星 (2,000點e幣)</option>
+                      <option value="學習之星">✨ 學習之星 (500點e幣)</option>
+                    </select>
+                    <p className="text-sm text-gray-600 leading-relaxed">
+                      若該隊伍未獲特優/優等，但簡報表現亮眼或達良好水平，可推薦角逐特色表現獎。
+                    </p>
+                  </div>
+
+                  <div className="md:col-span-2 space-y-2">
+                    <label className="block text-base font-bold text-gray-800">
+                      💬 評審評語與寶貴建議 <span className="text-gray-600 font-normal">(將完整呈現於評分總表並匿名提供參賽學生參考)</span>
+                    </label>
+                    <textarea
+                      rows="4"
+                      value={currentScore.comment || ''}
+                      onChange={(e) => updateScoreField('comment', e.target.value)}
+                      placeholder="請輸入對參賽學生的鼓勵、作品亮點或具體改進建議..."
+                      className={`w-full p-3.5 ${uiScale.commentText} border rounded-xl focus:ring-2 focus:ring-amber-900 focus:outline-none`}
+                    />
+                  </div>
+                </div>
+
+                {/* 底部提交操作列 */}
+                <div className="pt-4 border-t flex flex-col sm:flex-row justify-between items-center gap-4">
+                  <div className="text-base">
+                    {currentScore.status === 'saved' ? (
+                      <span className="text-emerald-800 font-bold flex items-center">
+                        🟢 此隊伍分數已安全儲存於雲端試算表 (總分：{calculateTotal(currentScore)} 分)
+                      </span>
+                    ) : (
+                      <span className="text-amber-900 font-bold flex items-center">
+                        🟡 您已調整評分 (已自動暫存於本機)，請點擊右側按鈕正式寫入雲端試算表！
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="flex flex-wrap items-center gap-3 w-full sm:w-auto justify-end">
+                    <button
+                      type="button"
+                      onClick={() => setPrintSheetOpen(true)}
+                      className="px-5 py-3.5 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white font-black text-base shadow-md transition flex items-center justify-center cursor-pointer"
+                    >
+                      <span className="material-icons text-xl mr-1.5">print</span>
+                      檢視/列印本組評分表
+                    </button>
+
+                    <button
+                      onClick={() => handleSubmitScore(false)}
+                      disabled={saving}
+                      className="px-8 py-3.5 rounded-xl text-white font-black text-base sm:text-lg shadow-lg hover:opacity-95 transition flex items-center justify-center cursor-pointer"
+                      style={{ backgroundColor: 'var(--secondary)' }}
+                    >
+                      <span className={`material-icons text-xl mr-2 ${saving ? 'animate-spin' : ''}`}>
+                        {saving ? 'sync' : 'cloud_upload'}
+                      </span>
+                      {saving ? '正在寫入雲端試算表...' : '儲存並提交本隊評分'}
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+            </div>
+          ) : (
+            <div className="flex-1 bg-white rounded-xl border flex items-center justify-center text-gray-500 text-lg font-bold">
+              請從左側列表點選參賽隊伍開始評分
+            </div>
+          )}
+        </div>
       </div>
 
-      {/* 4. 115 評分規準側邊抽屜 Modal (內建多元評量表 + 後台 Rubric_Link 按鈕) */}
+      {/* =========================================================
+          4. 115 評分規準側邊抽屜 Modal (標記 no-print)
+         ========================================================= */}
       {rubricDrawerOpen && (
-        <div className="fixed inset-0 bg-black/60 z-50 flex justify-end">
+        <div className="no-print fixed inset-0 bg-black/60 z-50 flex justify-end">
           <div className="bg-white w-full max-w-4xl h-full flex flex-col shadow-2xl overflow-hidden animate-fade-in">
-            {/* 抽屜頂部 */}
             <div className="bg-amber-950 text-white px-6 py-4 flex justify-between items-center shrink-0">
               <div>
                 <h2 className="text-lg sm:text-xl font-bold flex items-center">
@@ -950,12 +1186,10 @@ window.JudgeView = function({ user, onLogout }) {
               </div>
             </div>
 
-            {/* 抽屜內容區 */}
-            <div className="flex-1 overflow-y-auto p-6 space-y-6 text-sm sm:text-base bg-gray-50">
-              {/* 量表 5~0 級距總說明 */}
+            <div className="flex-1 overflow-y-auto p-6 space-y-6 text-base bg-gray-50">
               <div className="bg-white p-5 rounded-xl border shadow-2xs space-y-3">
-                <h3 className="font-black text-gray-900 text-base border-b pb-2">📌 評分量表級距說明 (5 卓越 ～ 0 未呈現)</h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5 text-sm">
+                <h3 className="font-black text-gray-900 text-lg border-b pb-2">📌 評分量表級距說明 (5 卓越 ～ 0 未呈現)</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5 text-sm sm:text-base">
                   <div className="p-2.5 bg-emerald-50 border border-emerald-200 rounded-lg">
                     <strong className="text-emerald-900">5 (卓越 - 90%~100%配分)：</strong>遠超預期。具備極具巧思或獨創性見解。
                   </div>
@@ -977,10 +1211,9 @@ window.JudgeView = function({ user, onLogout }) {
                 </div>
               </div>
 
-              {/* 一、簡報內容 (40%) */}
               <div className="bg-white p-5 rounded-xl border shadow-2xs space-y-3">
-                <h3 className="font-black text-amber-900 text-base border-b pb-2">一、簡報內容（最高 40 分）</h3>
-                <ul className="space-y-2 text-sm text-gray-800 list-disc list-inside">
+                <h3 className="font-black text-amber-900 text-lg border-b pb-2">一、簡報內容（最高 40 分）</h3>
+                <ul className="space-y-2 text-base text-gray-800 list-disc list-inside">
                   <li><strong>輔助材料完整性 (10分)：</strong>照片、影片等輔助材料展示巧妙、完整深入，有效強化並支持主題論述。</li>
                   <li><strong>資料正確性與考證、結構邏輯 (10分)：</strong>論述邏輯嚴謹、結構化高，對問題展現深度探討。</li>
                   <li><strong>觀點獨特性與創新表現 (10分)：</strong>具備極具巧思的獨創性見解、方法或解決方案，不落俗套。</li>
@@ -989,20 +1222,18 @@ window.JudgeView = function({ user, onLogout }) {
                 </ul>
               </div>
 
-              {/* 二、表達能力 (30%) */}
               <div className="bg-white p-5 rounded-xl border shadow-2xs space-y-3">
-                <h3 className="font-black text-amber-900 text-base border-b pb-2">二、表達能力（最高 30 分）</h3>
-                <ul className="space-y-2 text-sm text-gray-800 list-disc list-inside">
+                <h3 className="font-black text-amber-900 text-lg border-b pb-2">二、表達能力（最高 30 分）</h3>
+                <ul className="space-y-2 text-base text-gray-800 list-disc list-inside">
                   <li><strong>內容內化程度與情感渲染力 (10分)：</strong>內容完全內化（非死背或照稿宣讀），講述具情感感染力與吸引力，能引發共鳴。</li>
                   <li><strong>口語流暢度 (10分)：</strong>表達流暢、語速適中、節奏掌握佳，少有停頓或口誤，極具說服力。</li>
                   <li><strong>敘事技巧 (10分)：</strong>善用敘事技巧安排簡報順序，故事性或邏輯堆疊引人入勝，強化聽眾對主題理解。</li>
                 </ul>
               </div>
 
-              {/* 三、台風表現 (20%) */}
               <div className="bg-white p-5 rounded-xl border shadow-2xs space-y-3">
-                <h3 className="font-black text-amber-900 text-base border-b pb-2">三、台風表現（最高 20 分）</h3>
-                <ul className="space-y-2 text-sm text-gray-800 list-disc list-inside">
+                <h3 className="font-black text-amber-900 text-lg border-b pb-2">三、台風表現（最高 20 分）</h3>
+                <ul className="space-y-2 text-base text-gray-800 list-disc list-inside">
                   <li><strong>自信、眼神交流、肢體語言與團隊默契 (15分)：</strong>展現高度自信與說服力，鏡頭眼神交流自然，肢體語言得體，團隊合作默契無間。</li>
                   <li><strong>時間掌控 (5分)：</strong>
                     <span className="text-emerald-800 font-bold">標準時間為 5:00 ～ 8:00</span>（完全符合且節奏完美得滿分；4:00~4:59 或 8:01~9:00 為輕微不符；低於 4:00 或超過 9:00 為嚴重不符）。
@@ -1010,14 +1241,293 @@ window.JudgeView = function({ user, onLogout }) {
                 </ul>
               </div>
 
-              {/* 四、製作技巧 (10%) */}
               <div className="bg-white p-5 rounded-xl border shadow-2xs space-y-3">
-                <h3 className="font-black text-amber-900 text-base border-b pb-2">四、製作技巧（最高 10 分）</h3>
-                <ul className="space-y-2 text-sm text-gray-800 list-disc list-inside">
+                <h3 className="font-black text-amber-900 text-lg border-b pb-2">四、製作技巧（最高 10 分）</h3>
+                <ul className="space-y-2 text-base text-gray-800 list-disc list-inside">
                   <li><strong>鏡頭、剪輯、排版、視覺呈現與授權規範 (10分)：</strong>影片剪輯流暢、鏡頭運用專業，排版精緻易讀；且<strong>完全符合著作權引述出處、創用 CC 授權標示與生成式 AI 輔助標示規範</strong>。</li>
                 </ul>
               </div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* =========================================================
+          5. 本組評分清冊與簽名表 Modal (支援 A4 橫式跨頁列印 & Excel 下載)
+         ========================================================= */}
+      {printSheetOpen && (
+        <div className="print-sheet-modal-backdrop fixed inset-0 bg-black/75 z-50 overflow-y-auto p-4 sm:p-6 flex justify-center items-start">
+          <div className="print-sheet-modal-box bg-white w-full max-w-[1600px] rounded-2xl shadow-2xl border border-gray-300 overflow-hidden my-2">
+            
+            {/* 頂部操作工具列 (列印時自動隱藏 .no-print) */}
+            <div className="no-print bg-amber-950 text-white px-6 py-4 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+              <div>
+                <h2 className="text-lg sm:text-xl font-black flex items-center">
+                  <span className="material-icons text-amber-400 mr-2">assignment_turned_in</span>
+                  【{selectedGroup}】評審評分總表預覽與列印（含簽名處）
+                </h2>
+                <p className="text-xs sm:text-sm text-amber-200 mt-0.5">
+                  💡 列印小叮嚀：點擊「列印 / 存為 PDF」時，請選擇<strong>「橫向 (Landscape)」</strong>並勾選<strong>「背景圖形」</strong>，跨頁時表頭將自動重複印出！
+                </p>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2.5 shrink-0">
+                <button
+                  type="button"
+                  onClick={handleExportGroupExcel}
+                  className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-sm font-black flex items-center shadow-sm transition cursor-pointer"
+                >
+                  <span className="material-icons text-base mr-1.5">download</span>
+                  📥 下載 Excel (.xlsx)
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => window.print()}
+                  className="px-5 py-2.5 bg-amber-400 hover:bg-amber-300 text-amber-950 rounded-xl text-sm font-black flex items-center shadow-sm transition cursor-pointer"
+                >
+                  <span className="material-icons text-base mr-1.5">print</span>
+                  🖨️ 列印 / 另存為 PDF (A4 橫式)
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setPrintSheetOpen(false)}
+                  className="px-4 py-2.5 bg-red-700 hover:bg-red-800 text-white rounded-xl text-sm font-bold flex items-center transition cursor-pointer"
+                >
+                  <span className="material-icons text-base mr-1">close</span>
+                  返回評分工作台
+                </button>
+              </div>
+            </div>
+
+            {/* 評分表主體 (螢幕預覽與 A4 橫式列印共用結構) */}
+            <div className="p-4 sm:p-6 overflow-x-auto bg-white">
+              <table className="judge-print-table w-full border-collapse border-2 border-black text-black text-sm">
+                {/* 跨頁自動重複之表頭 (thead) */}
+                <thead>
+                  {/* 表頭第一列：組別大標題與評審資訊 */}
+                  <tr style={{ backgroundColor: '#FFFFFF' }}>
+                    <th
+                      colSpan={isCourseGroup ? 13 : 12}
+                      className="p-3 border border-black text-left"
+                    >
+                      <div className="flex flex-col sm:flex-row justify-between items-baseline gap-2">
+                        <span className="text-lg sm:text-xl font-black tracking-wide text-black">
+                          【{selectedGroup}】評分表
+                        </span>
+                        <span className="text-sm font-bold text-black">
+                          115學年度 宜蘭縣瘋學習簡報達人擂台賽　｜　評審委員：{judgeName}（代號 {judgeCode}）　｜　已評 {savedCount} / 共 {filteredTeams.length} 隊
+                        </span>
+                      </div>
+                    </th>
+                  </tr>
+
+                  {/* 表頭第二列：各欄位名稱 (完全對齊去年試算表配色與結構，移除賽前審核表) */}
+                  <tr className="text-center font-black text-black">
+                    <th className="p-2.5 border border-black w-[16%]" style={{ backgroundColor: '#F3E5AB' }}>
+                      隊伍與作品標題
+                    </th>
+                    <th className="p-2.5 border border-black w-[23%]" style={{ backgroundColor: '#F3E5AB' }}>
+                      作品說明 (內容)
+                    </th>
+                    {isCourseGroup && (
+                      <th className="p-2 border border-black w-[4.5%]" style={{ backgroundColor: '#F3E5AB' }}>
+                        校訂<br />課程
+                      </th>
+                    )}
+                    <th className="p-2 border border-black w-[4.5%]" style={{ backgroundColor: '#F3E5AB' }}>
+                      簡報檔
+                    </th>
+                    <th className="p-2 border border-black w-[5.5%]" style={{ backgroundColor: '#F3E5AB' }}>
+                      Mindomo<br />心智圖
+                    </th>
+                    <th className="p-2 border border-black w-[4.5%]" style={{ backgroundColor: '#F3E5AB' }}>
+                      影片檔
+                    </th>
+                    <th className="p-2 border border-black w-[4.5%]" style={{ backgroundColor: '#DCE6F1' }}>
+                      內容<br />40%
+                    </th>
+                    <th className="p-2 border border-black w-[5%]" style={{ backgroundColor: '#DCE6F1' }}>
+                      表達能力<br />30%
+                    </th>
+                    <th className="p-2 border border-black w-[5%]" style={{ backgroundColor: '#DCE6F1' }}>
+                      臺風表現<br />20%
+                    </th>
+                    <th className="p-2 border border-black w-[5%]" style={{ backgroundColor: '#DCE6F1' }}>
+                      製作技巧<br />10%
+                    </th>
+                    <th className="p-2 border border-black w-[5%]" style={{ backgroundColor: '#E4DFEC' }}>
+                      分數<br />加總
+                    </th>
+                    <th className="p-2 border border-black w-[4.5%]" style={{ backgroundColor: '#D8E4BC' }}>
+                      序位法
+                    </th>
+                    <th className="p-2.5 border border-black" style={{ backgroundColor: '#F2F2F2' }}>
+                      評語
+                    </th>
+                  </tr>
+                </thead>
+
+                {/* 表格內容列 (依參賽隊伍順序排列 + 斑馬紋交替色) */}
+                <tbody>
+                  {filteredTeams.map((team, idx) => {
+                    const tid = team.team_id || team.Team_ID;
+                    const sc = scoresMap[tid];
+                    const rowBg = idx % 2 === 0 ? '#FFFFFF' : '#FDF8EC';
+                    const schoolStr = team.school || team.School || '';
+                    const teamNameStr = team.team_name || team.Team_Name || '';
+                    const workTitle = team.work_title || team.Work_Title || '';
+                    const descStr = String(team.description || team.Description || '').trim();
+                    const courseLink = team.Course_Plan_Link || team.course_plan_link || '';
+                    const slidesLink = team.Slides_Link || team.slides_link || '';
+                    const mindmapLink = team.MindMap_Link || team.mindmap_link || '';
+                    const videoLink = team.Video_Link || team.video_link || '';
+                    const totalVal = sc ? calculateTotal(sc) : 0;
+                    const rankVal = sc ? (rankMap[tid] || '-') : '-';
+
+                    return (
+                      <tr key={tid} style={{ backgroundColor: rowBg }}>
+                        {/* 1. 隊伍序號 + 學校隊伍名稱 (上) + 作品標題 (下) */}
+                        <td className="p-2.5 border border-black align-middle">
+                          <div className="text-xs font-bold text-gray-800 mb-1">
+                            第 {String(idx + 1).padStart(2, '0')} 隊｜{schoolStr}{teamNameStr ? `【${teamNameStr}】` : ''}
+                          </div>
+                          <div className="text-sm sm:text-base font-black text-black leading-snug">
+                            {workTitle}
+                          </div>
+                        </td>
+
+                        {/* 2. 作品說明 (完整呈現不截斷) */}
+                        <td className="p-2.5 border border-black align-top text-xs sm:text-sm leading-relaxed whitespace-pre-wrap break-words">
+                          {descStr || <span className="text-gray-400">-</span>}
+                        </td>
+
+                        {/* 3. 校訂課程 (僅校訂課程組顯示) */}
+                        {isCourseGroup && (
+                          <td className="p-1.5 border border-black text-center align-middle text-xs font-bold">
+                            {courseLink ? (
+                              <a href={courseLink} target="_blank" rel="noopener noreferrer" className="text-blue-700 underline">
+                                校訂課程
+                              </a>
+                            ) : (
+                              <span className="text-gray-400">-</span>
+                            )}
+                          </td>
+                        )}
+
+                        {/* 4. 簡報檔 */}
+                        <td className="p-1.5 border border-black text-center align-middle text-xs font-bold">
+                          {slidesLink ? (
+                            <a href={slidesLink} target="_blank" rel="noopener noreferrer" className="text-blue-700 underline">
+                              簡報檔
+                            </a>
+                          ) : (
+                            <span className="text-gray-400">-</span>
+                          )}
+                        </td>
+
+                        {/* 5. Mindomo心智圖 */}
+                        <td className="p-1.5 border border-black text-center align-middle text-xs font-bold">
+                          {mindmapLink ? (
+                            <a href={mindmapLink} target="_blank" rel="noopener noreferrer" className="text-blue-700 underline">
+                              Mindomo心智圖
+                            </a>
+                          ) : (
+                            <span className="text-gray-400">-</span>
+                          )}
+                        </td>
+
+                        {/* 6. 影片檔 */}
+                        <td className="p-1.5 border border-black text-center align-middle text-xs font-bold">
+                          {videoLink ? (
+                            <a href={videoLink} target="_blank" rel="noopener noreferrer" className="text-blue-700 underline">
+                              影片檔
+                            </a>
+                          ) : (
+                            <span className="text-gray-400">-</span>
+                          )}
+                        </td>
+
+                        {/* 7~10. 四項配分 */}
+                        <td className="p-2 border border-black text-center align-middle font-bold text-sm">
+                          {sc ? sc.score_content : ''}
+                        </td>
+                        <td className="p-2 border border-black text-center align-middle font-bold text-sm">
+                          {sc ? sc.score_expression : ''}
+                        </td>
+                        <td className="p-2 border border-black text-center align-middle font-bold text-sm">
+                          {sc ? sc.score_stage : ''}
+                        </td>
+                        <td className="p-2 border border-black text-center align-middle font-bold text-sm">
+                          {sc ? sc.score_technique : ''}
+                        </td>
+
+                        {/* 11. 分數加總 */}
+                        <td className="p-2 border border-black text-center align-middle font-black text-base">
+                          {sc ? totalVal : 0}
+                        </td>
+
+                        {/* 12. 序位法 */}
+                        <td className="p-2 border border-black text-center align-middle font-black text-base">
+                          {rankVal}
+                        </td>
+
+                        {/* 13. 評語 (完整呈現不截斷) */}
+                        <td className="p-2.5 border border-black align-top text-xs sm:text-sm leading-relaxed whitespace-pre-wrap break-words">
+                          {sc && sc.award && (
+                            <div className="font-black text-amber-900 mb-1">
+                              ★ 特色表現獎推薦：{sc.award}
+                            </div>
+                          )}
+                          {sc && sc.comment ? sc.comment : ''}
+                        </td>
+                      </tr>
+                    );
+                  })}
+
+                  {/* 防竄改「以下空白」列 */}
+                  <tr style={{ backgroundColor: '#FFFFFF' }}>
+                    <td className="p-2.5 border border-black text-center font-black text-sm tracking-widest">
+                      以下空白
+                    </td>
+                    <td className="p-2 border border-black text-center text-gray-400">—</td>
+                    {isCourseGroup && <td className="p-2 border border-black text-center text-gray-400">—</td>}
+                    <td className="p-2 border border-black text-center text-gray-400">—</td>
+                    <td className="p-2 border border-black text-center text-gray-400">—</td>
+                    <td className="p-2 border border-black text-center text-gray-400">—</td>
+                    <td className="p-2 border border-black text-center text-gray-400"></td>
+                    <td className="p-2 border border-black text-center text-gray-400"></td>
+                    <td className="p-2 border border-black text-center text-gray-400"></td>
+                    <td className="p-2 border border-black text-center text-gray-400"></td>
+                    <td className="p-2 border border-black text-center font-bold text-gray-500">0</td>
+                    <td className="p-2 border border-black text-center font-bold text-gray-500">—</td>
+                    <td className="p-2 border border-black text-center text-gray-400">—</td>
+                  </tr>
+
+                  {/* 最下方：請評審委員在分數下方簽名處 (防跨頁切斷) */}
+                  <tr className="judge-signature-block">
+                    <td
+                      colSpan={isCourseGroup ? 6 : 5}
+                      className="p-5 border border-black text-center align-middle font-black text-base sm:text-lg"
+                      style={{ backgroundColor: '#F9EBC8' }}
+                    >
+                      請評審委員在分數下方簽名：
+                    </td>
+                    <td
+                      colSpan={7}
+                      className="p-5 border border-black align-bottom text-right"
+                      style={{ backgroundColor: '#FDF8EC', height: '85px' }}
+                    >
+                      <span className="text-xs text-gray-600 font-bold">
+                        （評審簽章處　｜　日期：中華民國 115 年 　　 月 　　 日）
+                      </span>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
           </div>
         </div>
       )}

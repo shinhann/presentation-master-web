@@ -109,3 +109,91 @@ input[type=range] {
 ::-webkit-scrollbar-thumb:hover {
   background: #A1887F;
 }
+
+/* =========================================================
+   評審評分表 A4 橫式列印專屬樣式 (跨頁表頭重複、高對比黑框、防斷行)
+   ========================================================= */
+@page {
+  size: A4 landscape;
+  margin: 10mm 8mm;
+}
+
+@media print {
+  html, body, #root {
+    background: #FFFFFF !important;
+    color: #000000 !important;
+    height: auto !important;
+    min-height: 0 !important;
+    overflow: visible !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  /* 隱藏所有非列印區的網頁元件 */
+  .no-print {
+    display: none !important;
+  }
+
+  /* 展開列印容器，解除固定定位與捲軸限制，確保跨頁正常分頁 */
+  .print-sheet-modal-backdrop {
+    position: static !important;
+    display: block !important;
+    background: transparent !important;
+    width: 100% !important;
+    height: auto !important;
+    overflow: visible !important;
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+
+  .print-sheet-modal-box {
+    position: static !important;
+    display: block !important;
+    width: 100% !important;
+    max-width: none !important;
+    height: auto !important;
+    max-height: none !important;
+    overflow: visible !important;
+    box-shadow: none !important;
+    border: none !important;
+    border-radius: 0 !important;
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+
+  /* 評分表跨頁表頭自動重複 */
+  table.judge-print-table {
+    width: 100% !important;
+    border-collapse: collapse !important;
+    border: 1.5px solid #000000 !important;
+    page-break-inside: auto !important;
+  }
+
+  table.judge-print-table thead {
+    display: table-header-group !important;
+  }
+
+  table.judge-print-table tfoot {
+    display: table-footer-group !important;
+  }
+
+  table.judge-print-table tr {
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+  }
+
+  table.judge-print-table th,
+  table.judge-print-table td {
+    border: 1px solid #222222 !important;
+    color: #000000 !important;
+  }
+
+  /* 簽名欄防跨頁切斷 */
+  .judge-signature-block {
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+  }
+}
+
