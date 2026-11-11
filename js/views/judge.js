@@ -1038,8 +1038,8 @@ window.JudgeView = function({ user, onLogout }) {
                       className="w-full p-3.5 text-base sm:text-lg border rounded-xl bg-white font-bold text-gray-900 shadow-2xs"
                     >
                       <option value="">-- 無特別推薦 --</option>
-                      <option value="簡報之星">✨ 簡報之星 (2,000點e幣)</option>
-                      <option value="學習之星">✨ 學習之星 (500點e幣)</option>
+                      <option value="簡報之星">✨ 簡報之星</option>
+                      <option value="學習之星">✨ 學習之星</option>
                     </select>
                     <p className="text-sm text-gray-600 leading-relaxed">
                       若該隊伍未獲特優/優等，但表現亮眼或達良好水平，可推薦角逐特色表現獎（供決審評審會議討論之提名建議，不列印於個人評分表）。
@@ -1487,6 +1487,12 @@ window.JudgeView = function({ user, onLogout }) {
                   </tr>
                 </tbody>
               </table>
+
+              {/* 列印頁尾：左側競賽標註、右側頁碼 (第 1 頁，共 X 頁) */}
+              <div className="mt-3 flex justify-between items-center text-xs text-black font-bold px-1 print-page-number">
+                <span>115學年度 宜蘭縣瘋學習簡報達人擂台賽 — 【{selectedGroup}】評分總表</span>
+                <span>第 1 頁，共 {Math.max(1, Math.ceil((filteredTeams.length + 2) / 8))} 頁</span>
+              </div>
             </div>
 
           </div>

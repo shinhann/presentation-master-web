@@ -161,14 +161,34 @@ function processExportJudgeSheet(ss, payload) {
     return { status: 'error', message: '缺少組別名稱 (category)', data: null };
   }
 
-  // 在主試算表中建立或更新該評審專屬的格式化評分表分頁
-  const rawTabName = `評分表_${judgeCode}_${category}`.substring(0, 95);
-  let targetSheet = ss.getSheetByName(rawTabName);
-  if (!targetSheet) {
-    targetSheet = ss.insertSheet(rawTabName);
+  // 建立全新獨立 Google 試算表檔案 (完全隔離主資料庫，防範機密外洩)
+  const standaloneTitle = `115學年度_【${category}】_評審${judgeCode}_${judgeName}_評分表`;
+  
+  let newSS;
+  const existingFiles = DriveApp.getFilesByName(standaloneTitle);
+  if (existingFiles.hasNext()) {
+    const existingFile = existingFiles.next();
+    newSS = SpreadsheetApp.open(existingFile);
   } else {
-    targetSheet.clear();
-    targetSheet.clearFormats();
+    newSS = SpreadsheetApp.create(standaloneTitle);
+  }
+
+  // 設定檔案權限為「知道連結者可檢視」 (免登入、防篡改、不暴露主資料庫)
+  const driveFile = DriveApp.getFileById(newSS.getId());
+  driveFile.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+
+  // 取得該獨立檔案之工作表並清理格式
+  let targetSheet = newSS.getSheets()[0];
+  try {
+    targetSheet.setName(`${category}_評分表`.substring(0, 95));
+  } catch (e) {}
+  targetSheet.clear();
+  targetSheet.clearFormats();
+
+  // 若主資料庫先前有暫存分頁，一併清理以維護主資料庫整潔純淨
+  const oldMasterTab = ss.getSheetByName(`評分表_${judgeCode}_${category}`.substring(0, 95));
+  if (oldMasterTab) {
+    try { ss.deleteSheet(oldMasterTab); } catch (e) {}
   }
 
   const totalCols = isCourseGroup ? 13 : 12;
@@ -306,7 +326,7 @@ function processExportJudgeSheet(ss, payload) {
   targetSheet.setColumnWidth(colPtr++, 75);  // 臺風表現 20%
   targetSheet.setColumnWidth(colPtr++, 75);  // 製作技巧 10%
   targetSheet.setColumnWidth(colPtr++, 70);  // 分數加總
-  targetSheet.setColumnWidth(colPtr++, 60);  // 序位法
+  targetSheet.setColumnWidth(colPtr++, 60);  // 序位
   targetSheet.setColumnWidth(colPtr, 320);   // 評語
 
   // 凍結前 2 列 (跨頁或捲動時固定表頭)
@@ -314,13 +334,13 @@ function processExportJudgeSheet(ss, payload) {
 
   SpreadsheetApp.flush();
 
-  const sheetUrl = `${ss.getUrl()}#gid=${targetSheet.getSheetId()}`;
+  const sheetUrl = newSS.getUrl();
   return {
     status: 'success',
-    message: '已成功產生格式化的 Google 試算表評分表！',
+    message: '已成功在雲端建立獨立格式化評分表！',
     data: {
       sheet_url: sheetUrl,
-      sheet_name: rawTabName
+      sheet_name: standaloneTitle
     }
   };
 }
