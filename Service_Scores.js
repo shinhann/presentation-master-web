@@ -727,11 +727,11 @@ function processExportGroupSummarySheet(ss, payload) {
   targetSheet.setColumnWidth(5, 75);   // 平均總分
   targetSheet.setColumnWidth(6, 75);   // 序位法總分
   targetSheet.setColumnWidth(7, 60);   // 排名
-  targetSheet.setColumnWidth(8, 250);  // A評語
-  targetSheet.setColumnWidth(9, 250);  // B評語
-  targetSheet.setColumnWidth(10, 250); // C評語
-  targetSheet.setColumnWidth(11, 105); // 特色表現獎
-  targetSheet.setColumnWidth(12, 100); // 特色優選獎
+  targetSheet.setColumnWidth(8, 275);  // A評語 (加寬呈現完整評語)
+  targetSheet.setColumnWidth(9, 275);  // B評語 (加寬呈現完整評語)
+  targetSheet.setColumnWidth(10, 275); // C評語 (加寬呈現完整評語)
+  targetSheet.setColumnWidth(11, 85);  // 特色表現獎 (4字精簡欄寬)
+  targetSheet.setColumnWidth(12, 75);  // 特色優選獎 (2字精簡欄寬)
 
   targetSheet.setFrozenRows(2);
   SpreadsheetApp.flush();

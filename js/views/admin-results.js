@@ -67,6 +67,35 @@ window.AdminResultsView = function() {
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [lastSavedTime, setLastSavedTime] = useState('');
 
+  // 格式化當前列印時間點 (中華民國年、月、日、時、分)
+  const getFormattedPrintTime = () => {
+    const now = new Date();
+    const rocYear = (now.getFullYear() - 1911) > 0 ? (now.getFullYear() - 1911) : (window.APP_CONFIG.CURRENT_YEAR || 115);
+    const m = String(now.getMonth() + 1).padStart(2, '0');
+    const d = String(now.getDate()).padStart(2, '0');
+    const hh = String(now.getHours()).padStart(2, '0');
+    const mm = String(now.getMinutes()).padStart(2, '0');
+    return `中華民國 ${rocYear} 年 ${m} 月 ${d} 日 ${hh}:${mm}`;
+  };
+
+  const [printTimestamp, setPrintTimestamp] = useState(getFormattedPrintTime);
+
+  // 監聽列印事件，在列印對話框彈出前即刻鎖定最新列印時間戳
+  useEffect(() => {
+    const handleBeforePrint = () => {
+      setPrintTimestamp(getFormattedPrintTime());
+    };
+    window.addEventListener('beforeprint', handleBeforePrint);
+    return () => window.removeEventListener('beforeprint', handleBeforePrint);
+  }, []);
+
+  const handlePrint = () => {
+    setPrintTimestamp(getFormattedPrintTime());
+    setTimeout(() => {
+      window.print();
+    }, 50);
+  };
+
   // 監聽 beforeunload，若有未存檔變更提醒使用者
   useEffect(() => {
     const handleBeforeUnload = (e) => {
@@ -769,7 +798,7 @@ window.AdminResultsView = function() {
 
             <button
               type="button"
-              onClick={() => window.print()}
+              onClick={handlePrint}
               disabled={processedGroupData.length === 0}
               className="bg-gray-900 hover:bg-black text-white px-3.5 py-2 rounded-xl text-sm font-black flex items-center shadow-sm transition cursor-pointer"
             >
@@ -788,21 +817,21 @@ window.AdminResultsView = function() {
           </h2>
         </div>
 
-        {/* 12欄總和嚴格控制在 100%，確保螢幕與 A4 列印右側兩欄絕不被擠壓 */}
-        <table className="w-full border-collapse judge-print-table text-black" style={{ border: '2px solid #000' }}>
+        {/* 12欄寬度配比：大幅加寬評語欄（各14%），精簡得獎欄（7.5%與6.5%），總和嚴格100% */}
+        <table className="w-full border-collapse judge-print-table text-black" style={{ border: '2px solid #000', tableLayout: 'fixed' }}>
           <colgroup>
             <col style={{ width: '15%' }} />
-            <col style={{ width: '5.5%' }} />
-            <col style={{ width: '5.5%' }} />
-            <col style={{ width: '5.5%' }} />
-            <col style={{ width: '5.5%' }} />
-            <col style={{ width: '5.5%' }} />
+            <col style={{ width: '5%' }} />
+            <col style={{ width: '5%' }} />
+            <col style={{ width: '5%' }} />
+            <col style={{ width: '5%' }} />
+            <col style={{ width: '5%' }} />
             <col style={{ width: '4%' }} />
-            <col style={{ width: '11%' }} />
-            <col style={{ width: '11%' }} />
-            <col style={{ width: '11%' }} />
-            <col style={{ width: '11%' }} />
-            <col style={{ width: '9.5%' }} />
+            <col style={{ width: '14%' }} />
+            <col style={{ width: '14%' }} />
+            <col style={{ width: '14%' }} />
+            <col style={{ width: '7.5%' }} />
+            <col style={{ width: '6.5%' }} />
           </colgroup>
           <thead>
             <tr className={`${fontStyles.tableHeader} font-black text-center print-text-base`}>
@@ -849,13 +878,13 @@ window.AdminResultsView = function() {
                 </th>
               ))}
               <th
-                className="p-1.5 border border-black min-w-[138px]"
+                className="p-1 border border-black"
                 style={{ backgroundColor: '#F5D6D6' }}
               >
                 特色表現獎
               </th>
               <th
-                className="p-1.5 border border-black min-w-[115px]"
+                className="p-1 border border-black"
                 style={{ backgroundColor: '#F5D6D6' }}
               >
                 特色優選獎
@@ -1073,13 +1102,13 @@ window.AdminResultsView = function() {
                       </td>
                     ))}
 
-                    {/* 11. 特色表現獎 (保證寬度充足，文字完整呈現) */}
-                    <td className="p-1.5 border border-black text-center align-middle min-w-[138px]">
+                    {/* 11. 特色表現獎 (簡報之星 / 學習之星) */}
+                    <td className="p-1 border border-black text-center align-middle">
                       <div className="no-print">
                         <select
                           value={dec.feature_award || ''}
                           onChange={(e) => handleDecisionChange(item.team_id, 'feature_award', e.target.value)}
-                          className={`w-full min-w-[124px] rounded-lg font-black border-2 cursor-pointer transition focus:outline-none text-center ${fontStyles.selectText} ${
+                          className={`w-full min-w-[88px] rounded-lg font-black border-2 cursor-pointer transition focus:outline-none text-center ${fontStyles.selectText} ${
                             dec.feature_award === '簡報之星'
                               ? 'bg-teal-100 text-teal-950 border-teal-500'
                               : dec.feature_award === '學習之星'
@@ -1098,13 +1127,13 @@ window.AdminResultsView = function() {
                       </span>
                     </td>
 
-                    {/* 12. 特色優選獎 (保證寬度充足，文字完整呈現) */}
-                    <td className="p-1.5 border border-black text-center align-middle min-w-[115px]">
+                    {/* 12. 特色優選獎 (特優 / 優等) */}
+                    <td className="p-1 border border-black text-center align-middle">
                       <div className="no-print">
                         <select
                           value={dec.rank_award || ''}
                           onChange={(e) => handleDecisionChange(item.team_id, 'rank_award', e.target.value)}
-                          className={`w-full min-w-[100px] rounded-lg font-black border-2 cursor-pointer transition focus:outline-none text-center ${fontStyles.selectText} ${
+                          className={`w-full min-w-[80px] rounded-lg font-black border-2 cursor-pointer transition focus:outline-none text-center ${fontStyles.selectText} ${
                             dec.rank_award === '特優'
                               ? 'bg-yellow-300 text-yellow-950 border-yellow-600'
                               : dec.rank_award === '優等'
@@ -1149,10 +1178,10 @@ window.AdminResultsView = function() {
           </tbody>
         </table>
 
-        {/* 紙本列印頁尾 */}
+        {/* 紙本列印頁尾：列印時間精準套印至當下按鈕時間點 */}
         <div className="only-print mt-2 flex justify-between items-center text-xs font-bold text-gray-700">
           <span>{window.APP_CONFIG.CURRENT_YEAR}學年度 宜蘭縣國民中小學簡報達人擂台賽 — {fullCategoryHeading}</span>
-          <span>列印日期：中華民國 {window.APP_CONFIG.CURRENT_YEAR} 年 　 月 　 日</span>
+          <span>列印時間：{printTimestamp}</span>
         </div>
       </div>
 
