@@ -444,55 +444,7 @@ window.AdminResultsView = function() {
     setHasUnsavedChanges(true);
   };
 
-  // 5. 「一鍵帶入系統試算建議」
-  const handleApplySystemRecommendations = () => {
-    if (processedGroupData.length === 0) return;
-
-    const quota = quotaStats.quotaLimit;
-    const sortedByScore = [...processedGroupData].sort((a, b) => {
-      if (a.avg_score === null && b.avg_score === null) return a.seq_index - b.seq_index;
-      if (a.avg_score === null) return 1;
-      if (b.avg_score === null) return -1;
-      if (b.avg_score !== a.avg_score) return b.avg_score - a.avg_score;
-      return (a.rank_sum ?? 999) - (b.rank_sum ?? 999);
-    });
-
-    const newMap = { ...decisionsMap };
-    sortedByScore.forEach((item, index) => {
-      const avg = item.avg_score ?? 0;
-      const hasAnyScore = item.scored_count > 0;
-      let featureAward = '';
-      let rankAward = '';
-
-      if (hasAnyScore) {
-        featureAward = '學習之星';
-        if (item.star_presentation_count >= 1 || avg >= 82 || index < quota) {
-          featureAward = '簡報之星';
-        }
-        if (index < quota) {
-          if (avg >= 90) {
-            rankAward = '特優';
-            featureAward = '簡報之星';
-          } else if (avg >= 85 || index < quota) {
-            rankAward = '優等';
-            featureAward = '簡報之星';
-          }
-        }
-      }
-
-      newMap[item.team_id] = {
-        feature_award: featureAward,
-        rank_award: rankAward,
-        saved: false
-      };
-    });
-
-    setDecisionsMap(newMap);
-    saveToLocalDraft(newMap);
-    setHasUnsavedChanges(true);
-  };
-
-  // 6. 儲存本組決審結果至雲端 Final_Results
+  // 5. 儲存本組決審結果至雲端 Final_Results
   const handleSaveGroupResults = async () => {
     if (processedGroupData.length === 0) return;
 
@@ -604,139 +556,116 @@ window.AdminResultsView = function() {
 
   return (
     <div className="space-y-4">
-      {/* ==================== 頂部工具列 ==================== */}
-      <div className="no-print bg-white p-4 rounded-xl border border-amber-200 shadow-sm flex flex-col xl:flex-row justify-between items-stretch xl:items-center gap-4">
-        <div className="flex flex-wrap items-center gap-3">
-          <div className="bg-amber-900 text-white px-3.5 py-2 rounded-lg flex items-center shadow-sm">
-            <span className="material-icons mr-1.5">gavel</span>
-            <span className="font-black text-base tracking-wide">共識會議決審工作台</span>
-          </div>
+      {/* ==================== 第 1 層：六大組別頁籤切換與全域工具列 ==================== */}
+      <div className="no-print bg-white p-3 rounded-xl border border-amber-200 shadow-sm flex flex-col xl:flex-row justify-between items-stretch xl:items-center gap-3">
+        {/* 左側：六大組別頁籤按鈕 (直接切換，含已繳件隊數與存檔打勾標註，徹底取代舊有下拉選單) */}
+        <div className="flex flex-wrap items-center gap-2">
+          {CATEGORIES.map(c => {
+            const isSelected = selectedCategory === c;
+            const cTeams = teams.filter(t => String(t.category || t.Category || t.group_name || t.Group_Name) === c);
+            const cSubmitted = cTeams.filter(t => (t.slides_link || t.Slides_Link || '').trim() || (t.video_link || t.Video_Link || '').trim());
+            const savedInCat = cSubmitted.filter(t => decisionsMap[String(t.team_id || t.Team_ID)]?.saved).length;
+            const isCatSaved = cSubmitted.length > 0 && savedInCat === cSubmitted.length;
+            return (
+              <button
+                key={c}
+                type="button"
+                onClick={() => setSelectedCategory(c)}
+                className={`px-3.5 py-2 rounded-xl font-black text-sm flex items-center space-x-2 border transition shadow-sm cursor-pointer ${
+                  isSelected
+                    ? 'bg-amber-900 text-white border-amber-950 ring-2 ring-amber-400'
+                    : 'bg-white text-gray-800 border-gray-300 hover:bg-amber-50'
+                }`}
+              >
+                <span>{c}</span>
+                <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${
+                  isSelected ? 'bg-amber-700 text-amber-100' : 'bg-gray-100 text-gray-600'
+                }`}>
+                  {cSubmitted.length} 隊
+                </span>
+                {isCatSaved && (
+                  <span className="text-emerald-400 font-black ml-0.5" title="此組別已儲存得獎名單">✔</span>
+                )}
+              </button>
+            );
+          })}
+        </div>
 
-          {/* 組別下拉選單 */}
-          <div className="flex items-center space-x-2 bg-amber-50 border border-amber-300 rounded-lg px-3 py-1.5">
-            <span className="text-sm font-bold text-amber-950">當前審閱組別：</span>
-            <select
-              value={selectedCategory}
-              onChange={(e) => setSelectedCategory(e.target.value)}
-              className="bg-white border border-amber-400 text-amber-950 font-black text-base rounded-md px-3 py-1 focus:outline-none focus:ring-2 focus:ring-amber-600 cursor-pointer"
-            >
-              {CATEGORIES.map(c => {
-                const cTeams = teams.filter(t => String(t.category || t.Category || t.group_name || t.Group_Name) === c);
-                const subCount = cTeams.filter(t => (t.slides_link || t.Slides_Link || '').trim() || (t.video_link || t.Video_Link || '').trim()).length;
-                return (
-                  <option key={c} value={c}>
-                    {c}（已繳件 {subCount} 隊 / 報名 {cTeams.length} 隊）
-                  </option>
-                );
-              })}
-            </select>
-          </div>
-
+        {/* 右側：同步最新分數 ｜ 字級縮放 [ A 小 | A 中 | 𝐀 大 ] ｜ 對照評分規準 */}
+        <div className="flex flex-wrap items-center gap-2.5 justify-end shrink-0">
           <button
+            type="button"
             onClick={loadAllData}
             disabled={loading}
-            className="px-3 py-2 rounded-lg border border-gray-300 bg-white hover:bg-gray-50 text-gray-700 text-sm font-bold flex items-center shadow-sm transition"
+            className="px-3 py-1.5 rounded-lg border border-gray-300 bg-white hover:bg-gray-50 text-gray-700 text-sm font-bold flex items-center shadow-sm transition cursor-pointer"
             title="從雲端重新同步最新評審分數"
           >
             <span className={`material-icons text-base mr-1 ${loading ? 'animate-spin' : ''}`}>sync</span>
-            同步最新分數
+            同步分數
           </button>
-        </div>
 
-        {/* 右側：字級切換 [ ᴀ 小 ] [ A 中 ] [ 𝐀 大 ] + 評分規準 */}
-        <div className="flex flex-wrap items-center gap-3 justify-end">
-          <div className="flex items-center bg-gray-100 p-1 rounded-xl border border-gray-300 shadow-inner">
+          <div className="flex items-center bg-gray-100 p-0.5 rounded-lg border border-gray-300 shadow-inner">
             <button
               type="button"
               onClick={() => handleFontScaleChange('small')}
-              className={`px-3 py-1.5 rounded-lg font-bold flex items-center space-x-1 transition ${
+              className={`px-2.5 py-1 rounded-md font-bold flex items-center space-x-1 transition cursor-pointer ${
                 fontScale === 'small'
                   ? 'bg-amber-900 text-white shadow'
                   : 'text-gray-700 hover:bg-gray-200'
               }`}
             >
-              <span className="text-[13px] font-serif leading-none">A</span>
-              <span className="text-sm">小</span>
+              <span className="text-[12px] font-serif leading-none">A</span>
+              <span className="text-xs">小</span>
             </button>
             <button
               type="button"
               onClick={() => handleFontScaleChange('medium')}
-              className={`px-3.5 py-1.5 rounded-lg font-bold flex items-center space-x-1 transition ${
+              className={`px-2.5 py-1 rounded-md font-bold flex items-center space-x-1 transition cursor-pointer ${
                 fontScale === 'medium'
                   ? 'bg-amber-900 text-white shadow'
                   : 'text-gray-700 hover:bg-gray-200'
               }`}
             >
-              <span className="text-[17px] font-serif leading-none">A</span>
-              <span className="text-base">中</span>
+              <span className="text-[15px] font-serif leading-none">A</span>
+              <span className="text-sm">中</span>
             </button>
             <button
               type="button"
               onClick={() => handleFontScaleChange('large')}
-              className={`px-4 py-1.5 rounded-lg font-black flex items-center space-x-1.5 transition ${
+              className={`px-3 py-1 rounded-md font-black flex items-center space-x-1 transition cursor-pointer ${
                 fontScale === 'large'
                   ? 'bg-amber-900 text-white shadow'
                   : 'text-gray-700 hover:bg-gray-200'
               }`}
             >
-              <span className="text-[22px] font-serif leading-none">A</span>
-              <span className="text-lg">大</span>
+              <span className="text-[18px] font-serif leading-none">A</span>
+              <span className="text-base">大</span>
             </button>
           </div>
 
           <button
             type="button"
             onClick={() => setShowRubricDrawer(true)}
-            className="bg-indigo-700 hover:bg-indigo-800 text-white px-4 py-2 rounded-xl text-sm font-black flex items-center shadow-sm transition"
+            className="bg-indigo-700 hover:bg-indigo-800 text-white px-3.5 py-1.5 rounded-lg text-sm font-black flex items-center shadow-sm transition cursor-pointer"
           >
-            <span className="material-icons text-lg mr-1.5">fact_check</span>
-            對照評分規準
+            <span className="material-icons text-base mr-1">fact_check</span>
+            評分規準
           </button>
         </div>
       </div>
 
-      {/* ==================== 六大組別頁籤列 ==================== */}
-      <div className="no-print flex flex-wrap gap-2">
-        {CATEGORIES.map(c => {
-          const isSelected = selectedCategory === c;
-          const cTeams = teams.filter(t => String(t.category || t.Category || t.group_name || t.Group_Name) === c);
-          const cSubmitted = cTeams.filter(t => (t.slides_link || t.Slides_Link || '').trim() || (t.video_link || t.Video_Link || '').trim());
-          const savedInCat = cSubmitted.filter(t => decisionsMap[String(t.team_id || t.Team_ID)]?.saved).length;
-          const isCatSaved = cSubmitted.length > 0 && savedInCat === cSubmitted.length;
-          return (
-            <button
-              key={c}
-              onClick={() => setSelectedCategory(c)}
-              className={`px-4 py-2.5 rounded-xl font-black text-sm flex items-center space-x-2 border transition shadow-sm ${
-                isSelected
-                  ? 'bg-amber-900 text-white border-amber-950 ring-2 ring-amber-400'
-                  : 'bg-white text-gray-800 border-gray-300 hover:bg-amber-50'
-              }`}
-            >
-              <span>{c}</span>
-              <span className={`px-2 py-0.5 rounded-full text-xs ${
-                isSelected ? 'bg-amber-700 text-amber-100' : 'bg-gray-100 text-gray-600'
-              }`}>
-                {cSubmitted.length} 隊參賽
-              </span>
-              {isCatSaved && (
-                <span className="text-emerald-400" title="此組別已儲存得獎名單">✔</span>
-              )}
-            </button>
-          );
-        })}
-      </div>
-
-      {/* ==================== 共識會議名額與評審完評狀態儀表板 (評審匿名只顯示代號) ==================== */}
-      <div className="no-print bg-amber-50/90 border-2 border-amber-300 rounded-xl p-4 shadow-sm space-y-3">
-        <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
-          <div className="flex flex-wrap items-center gap-3">
-            <div className="bg-white border border-amber-300 rounded-lg px-3.5 py-2 flex items-center space-x-3 shadow-sm">
-              <span className="text-sm font-black text-amber-950">評審完評進度：</span>
+      {/* ==================== 第 2 層：共識會議儀表板 ＆ 決策操作列 ==================== */}
+      <div className="no-print bg-amber-50/90 border-2 border-amber-300 rounded-xl p-3.5 shadow-sm space-y-3">
+        {/* 上半部：評審完評進度 ＆ 三分之一名額即時合規指針 */}
+        <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-3">
+          <div className="flex flex-wrap items-center gap-2.5">
+            {/* 評審完評進度 */}
+            <div className="bg-white border border-amber-300 rounded-lg px-3 py-1.5 flex items-center space-x-2.5 shadow-sm">
+              <span className="text-xs sm:text-sm font-black text-amber-950">評審完評進度：</span>
               {quotaStats.judgeProgress.map(jp => (
                 <span
                   key={jp.code}
-                  className={`px-2.5 py-1 rounded-md text-xs font-extrabold flex items-center ${
+                  className={`px-2 py-0.5 rounded-md text-xs font-extrabold flex items-center ${
                     jp.isComplete
                       ? 'bg-emerald-100 text-emerald-900 border border-emerald-300'
                       : 'bg-amber-100 text-amber-900 border border-amber-400'
@@ -747,43 +676,47 @@ window.AdminResultsView = function() {
               ))}
             </div>
 
-            <div className={`rounded-lg px-4 py-2 border flex flex-wrap items-center gap-3 shadow-sm ${
+            {/* 三分之一名額法定規準指針 */}
+            <div className={`rounded-lg px-3.5 py-1.5 border flex flex-wrap items-center gap-2.5 shadow-sm ${
               quotaStats.isOverQuota
                 ? 'bg-red-50 border-red-400 text-red-900'
                 : 'bg-white border-amber-300 text-gray-900'
             }`}>
-              <div className="text-sm font-black">
-                本組實際參賽共 <span className="text-lg text-amber-900 underline">{quotaStats.totalTeams}</span> 隊
-                ➔ 三分之一名額上限（特優＋優等）：
-                <span className="inline-block bg-amber-900 text-white px-2.5 py-0.5 rounded-md text-base font-black ml-1">
+              <div className="text-xs sm:text-sm font-black">
+                實參 <span className="text-base text-amber-900 underline font-black">{quotaStats.totalTeams}</span> 隊
+                ➔ <span className="text-amber-950 font-bold">1/3 上限 (特優+優等)：</span>
+                <span className="inline-block bg-amber-900 text-white px-2 py-0.5 rounded text-sm font-black ml-1">
                   {quotaStats.quotaLimit} 隊
                 </span>
               </div>
-              <div className="h-5 w-px bg-gray-300 hidden sm:block"></div>
-              <div className="flex items-center space-x-2 text-sm font-bold">
-                <span className="px-2.5 py-1 rounded bg-yellow-200 text-yellow-950 font-black border border-yellow-400">
+              <div className="h-4 w-px bg-gray-300 hidden sm:block"></div>
+              <div className="flex items-center space-x-1.5 text-xs font-bold">
+                <span className="px-2 py-0.5 rounded bg-yellow-200 text-yellow-950 font-black border border-yellow-400">
                   特優：{quotaStats.topCount}
                 </span>
-                <span className="px-2.5 py-1 rounded bg-amber-100 text-amber-950 font-black border border-amber-300">
+                <span className="px-2 py-0.5 rounded bg-amber-100 text-amber-950 font-black border border-amber-300">
                   優等：{quotaStats.excellentCount}
                 </span>
-                <span className={`px-2.5 py-1 rounded font-black ${
+                <span className={`px-2 py-0.5 rounded font-black ${
                   quotaStats.isOverQuota ? 'bg-red-600 text-white animate-pulse' : 'bg-emerald-100 text-emerald-900'
                 }`}>
                   合計：{quotaStats.totalTopWinners} / {quotaStats.quotaLimit}
                 </span>
-                <span className="px-2.5 py-1 rounded bg-teal-100 text-teal-900 font-extrabold border border-teal-300">
+                <span className="px-2 py-0.5 rounded bg-teal-100 text-teal-900 font-extrabold border border-teal-300">
                   簡報之星：{quotaStats.presStarCount}
                 </span>
-                <span className="px-2.5 py-1 rounded bg-orange-100 text-orange-900 font-extrabold border border-orange-300">
+                <span className="px-2 py-0.5 rounded bg-orange-100 text-orange-900 font-extrabold border border-orange-300">
                   學習之星：{quotaStats.learnStarCount}
                 </span>
               </div>
             </div>
           </div>
+        </div>
 
-          <div className="flex flex-wrap items-center gap-2">
-            <div className="flex items-center bg-white border border-gray-300 rounded-lg px-2.5 py-1.5 text-xs font-bold text-gray-700 shadow-sm">
+        {/* 下半部：排序依據 ＋ 存檔提示 ＋ 操作按鈕 (已徹底移除「帶入系統建議」按鈕) */}
+        <div className="pt-2.5 border-t border-amber-200/80 flex flex-col md:flex-row justify-between items-start md:items-center gap-3">
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="flex items-center bg-white border border-gray-300 rounded-lg px-2.5 py-1 text-xs font-bold text-gray-700 shadow-sm">
               <span className="mr-1.5">排序依據：</span>
               <select
                 value={sortMode}
@@ -796,44 +729,29 @@ window.AdminResultsView = function() {
               </select>
             </div>
 
-            <button
-              type="button"
-              onClick={handleApplySystemRecommendations}
-              className="bg-amber-600 hover:bg-amber-700 text-white px-4 py-2 rounded-lg text-sm font-black flex items-center shadow-sm transition"
-              title="依名額上限與分數標準自動填入建議"
-            >
-              <span className="material-icons text-base mr-1">auto_fix_high</span>
-              帶入系統建議
-            </button>
-          </div>
-        </div>
-
-        {/* 狀態提醒與操作按鈕列 */}
-        <div className="pt-2 border-t border-amber-200/80 flex flex-col md:flex-row justify-between items-start md:items-center gap-3">
-          <div className="flex items-center space-x-2">
             {hasUnsavedChanges ? (
-              <span className="text-xs font-black text-red-700 bg-red-100 border border-red-300 px-3 py-1.5 rounded-lg flex items-center animate-pulse">
+              <span className="text-xs font-black text-red-700 bg-red-100 border border-red-300 px-2.5 py-1 rounded-lg flex items-center animate-pulse">
                 <span className="material-icons text-sm mr-1">warning</span>
-                已自動暫存於本機，確認後請記得點擊「儲存本組得獎名單」寫入雲端！
+                本機已暫存，請記得點擊「儲存本組得獎名單」寫入雲端！
               </span>
             ) : lastSavedTime ? (
-              <span className="text-xs font-bold text-emerald-800 bg-emerald-100 border border-emerald-300 px-3 py-1.5 rounded-lg flex items-center">
+              <span className="text-xs font-bold text-emerald-800 bg-emerald-100 border border-emerald-300 px-2.5 py-1 rounded-lg flex items-center">
                 <span className="material-icons text-sm mr-1">check_circle</span>
-                已於 {lastSavedTime} 成功儲存至雲端 Final_Results
+                已於 {lastSavedTime} 成功存入雲端
               </span>
             ) : (
               <span className="text-xs font-medium text-gray-500">
-                本機自動即時暫存保護中
+                本機自動即時暫存中
               </span>
             )}
           </div>
 
-          <div className="flex flex-wrap items-center gap-2.5 w-full md:w-auto justify-end">
+          <div className="flex flex-wrap items-center gap-2 w-full md:w-auto justify-end">
             <button
               type="button"
               onClick={handleSaveGroupResults}
               disabled={saving || processedGroupData.length === 0}
-              className="bg-emerald-700 hover:bg-emerald-800 disabled:bg-gray-400 text-white px-5 py-2.5 rounded-xl text-sm font-black flex items-center shadow-md transition"
+              className="bg-emerald-700 hover:bg-emerald-800 disabled:bg-gray-400 text-white px-4 py-2 rounded-xl text-sm font-black flex items-center shadow-md transition cursor-pointer"
             >
               <span className="material-icons text-base mr-1.5">save</span>
               {saving ? '儲存中...' : '儲存本組得獎名單'}
@@ -843,7 +761,7 @@ window.AdminResultsView = function() {
               type="button"
               onClick={handleExportCloudSummarySheet}
               disabled={exportingSheet || processedGroupData.length === 0}
-              className="bg-teal-800 hover:bg-teal-900 disabled:bg-gray-400 text-white px-4 py-2.5 rounded-xl text-sm font-black flex items-center shadow-sm transition"
+              className="bg-teal-800 hover:bg-teal-900 disabled:bg-gray-400 text-white px-3.5 py-2 rounded-xl text-sm font-black flex items-center shadow-sm transition cursor-pointer"
             >
               <span className="material-icons text-base mr-1.5">open_in_new</span>
               {exportingSheet ? '產生中...' : '雲端評分總表'}
@@ -853,7 +771,7 @@ window.AdminResultsView = function() {
               type="button"
               onClick={() => window.print()}
               disabled={processedGroupData.length === 0}
-              className="bg-gray-900 hover:bg-black text-white px-4 py-2.5 rounded-xl text-sm font-black flex items-center shadow-sm transition"
+              className="bg-gray-900 hover:bg-black text-white px-3.5 py-2 rounded-xl text-sm font-black flex items-center shadow-sm transition cursor-pointer"
             >
               <span className="material-icons text-base mr-1.5">print</span>
               列印總表
