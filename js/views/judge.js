@@ -1278,7 +1278,7 @@ window.JudgeView = function({ user, onLogout }) {
                   {/* 表頭第一列：組別大標題與評審資訊 */}
                   <tr style={{ backgroundColor: '#FFFFFF' }}>
                     <th
-                      colSpan={isCourseGroup ? 13 : 12}
+                      colSpan={isCourseGroup ? 12 : 11}
                       className="p-3 border border-black text-left"
                     >
                       <div className="flex flex-col sm:flex-row justify-between items-baseline gap-2">
@@ -1292,44 +1292,41 @@ window.JudgeView = function({ user, onLogout }) {
                     </th>
                   </tr>
 
-                  {/* 表頭第二列：各欄位名稱 (完全對齊去年試算表配色與結構，移除賽前審核表) */}
+                  {/* 表頭第二列：各欄位名稱 (精簡版面：已移除作品說明欄位，大幅精簡頁數) */}
                   <tr className="text-center font-black text-black">
-                    <th className="p-2.5 border border-black w-[16%]" style={{ backgroundColor: '#F3E5AB' }}>
+                    <th className="p-2.5 border border-black w-[24%]" style={{ backgroundColor: '#F3E5AB' }}>
                       隊伍與作品標題
                     </th>
-                    <th className="p-2.5 border border-black w-[23%]" style={{ backgroundColor: '#F3E5AB' }}>
-                      作品說明 (內容)
-                    </th>
                     {isCourseGroup && (
-                      <th className="p-2 border border-black w-[4.5%]" style={{ backgroundColor: '#F3E5AB' }}>
+                      <th className="p-2 border border-black w-[5%]" style={{ backgroundColor: '#F3E5AB' }}>
                         校訂<br />課程
                       </th>
                     )}
-                    <th className="p-2 border border-black w-[4.5%]" style={{ backgroundColor: '#F3E5AB' }}>
+                    <th className="p-2 border border-black w-[5%]" style={{ backgroundColor: '#F3E5AB' }}>
                       簡報檔
                     </th>
-                    <th className="p-2 border border-black w-[5.5%]" style={{ backgroundColor: '#F3E5AB' }}>
+                    <th className="p-2 border border-black w-[6.5%]" style={{ backgroundColor: '#F3E5AB' }}>
                       Mindomo<br />心智圖
                     </th>
-                    <th className="p-2 border border-black w-[4.5%]" style={{ backgroundColor: '#F3E5AB' }}>
+                    <th className="p-2 border border-black w-[5%]" style={{ backgroundColor: '#F3E5AB' }}>
                       影片檔
                     </th>
-                    <th className="p-2 border border-black w-[4.5%]" style={{ backgroundColor: '#DCE6F1' }}>
+                    <th className="p-2 border border-black w-[5.5%]" style={{ backgroundColor: '#DCE6F1' }}>
                       內容<br />40%
                     </th>
-                    <th className="p-2 border border-black w-[5%]" style={{ backgroundColor: '#DCE6F1' }}>
+                    <th className="p-2 border border-black w-[5.5%]" style={{ backgroundColor: '#DCE6F1' }}>
                       表達能力<br />30%
                     </th>
-                    <th className="p-2 border border-black w-[5%]" style={{ backgroundColor: '#DCE6F1' }}>
+                    <th className="p-2 border border-black w-[5.5%]" style={{ backgroundColor: '#DCE6F1' }}>
                       臺風表現<br />20%
                     </th>
-                    <th className="p-2 border border-black w-[5%]" style={{ backgroundColor: '#DCE6F1' }}>
+                    <th className="p-2 border border-black w-[5.5%]" style={{ backgroundColor: '#DCE6F1' }}>
                       製作技巧<br />10%
                     </th>
-                    <th className="p-2 border border-black w-[5%]" style={{ backgroundColor: '#E4DFEC' }}>
+                    <th className="p-2 border border-black w-[5.5%]" style={{ backgroundColor: '#E4DFEC' }}>
                       分數<br />加總
                     </th>
-                    <th className="p-2 border border-black w-[4.5%]" style={{ backgroundColor: '#D8E4BC' }}>
+                    <th className="p-2 border border-black w-[5%]" style={{ backgroundColor: '#D8E4BC' }}>
                       序位
                     </th>
                     <th className="p-2.5 border border-black" style={{ backgroundColor: '#F2F2F2' }}>
@@ -1367,12 +1364,7 @@ window.JudgeView = function({ user, onLogout }) {
                           </div>
                         </td>
 
-                        {/* 2. 作品說明 (完整呈現不截斷) */}
-                        <td className="p-2.5 border border-black align-top text-xs sm:text-sm leading-relaxed whitespace-pre-wrap break-words">
-                          {descStr || <span className="text-gray-400">-</span>}
-                        </td>
-
-                        {/* 3. 校訂課程 (僅校訂課程組顯示) */}
+                        {/* 2. 校訂課程 (僅校訂課程組顯示) */}
                         {isCourseGroup && (
                           <td className="p-1.5 border border-black text-center align-middle text-xs font-bold">
                             {courseLink ? (
@@ -1455,7 +1447,6 @@ window.JudgeView = function({ user, onLogout }) {
                     <td className="p-2.5 border border-black text-center font-black text-sm tracking-widest">
                       以下空白
                     </td>
-                    <td className="p-2 border border-black text-center text-gray-400">—</td>
                     {isCourseGroup && <td className="p-2 border border-black text-center text-gray-400">—</td>}
                     <td className="p-2 border border-black text-center text-gray-400">—</td>
                     <td className="p-2 border border-black text-center text-gray-400">—</td>
@@ -1472,7 +1463,7 @@ window.JudgeView = function({ user, onLogout }) {
                   {/* 最下方：請評審委員簽名 (左側標籤，右側左上簽章/右下日期) */}
                   <tr className="judge-signature-block">
                     <td
-                      colSpan={isCourseGroup ? 6 : 5}
+                      colSpan={isCourseGroup ? 5 : 4}
                       className="p-5 border border-black text-center align-middle font-black text-base sm:text-lg"
                       style={{ backgroundColor: '#F9EBC8' }}
                     >

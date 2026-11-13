@@ -228,7 +228,7 @@ function processExportJudgeSheet(ss, payload) {
     }
   } catch (cleanErr) {}
 
-  const totalCols = isCourseGroup ? 13 : 12;
+  const totalCols = isCourseGroup ? 12 : 11;
 
   // 1. 第 1 列：組別大標題
   targetSheet.getRange(1, 1, 1, totalCols).merge();
@@ -239,10 +239,9 @@ function processExportJudgeSheet(ss, payload) {
     .setVerticalAlignment('middle');
   targetSheet.setRowHeight(1, 36);
 
-  // 2. 第 2 列：欄位表頭
+  // 2. 第 2 列：欄位表頭 (移除作品說明欄位，大幅精簡頁數)
   const headers = [
     '隊伍與作品標題',
-    '作品說明 (內容)',
     ...(isCourseGroup ? ['校訂課程'] : []),
     '簡報檔',
     'Mindomo心智圖',
@@ -266,7 +265,7 @@ function processExportJudgeSheet(ss, payload) {
   targetSheet.setRowHeight(2, 38);
 
   // 設定表頭分區背景色 (比照去年試算表配色)
-  const fileEndCol = isCourseGroup ? 6 : 5;
+  const fileEndCol = isCourseGroup ? 5 : 4;
   targetSheet.getRange(2, 1, 1, fileEndCol).setBackground('#F3E5AB');           // 淺暖黃
   targetSheet.getRange(2, fileEndCol + 1, 1, 4).setBackground('#DCE6F1');       // 四項配分：淺粉藍
   targetSheet.getRange(2, fileEndCol + 5, 1, 1).setBackground('#E4DFEC');       // 分數加總：淺紫
@@ -280,11 +279,9 @@ function processExportJudgeSheet(ss, payload) {
     const rowBg = idx % 2 === 0 ? '#FFFFFF' : '#FDF8EC'; // 斑馬紋交替色
 
     const compositeTitle = `${item.seq_label || ('第 ' + (idx + 1) + ' 隊')}｜${item.school || ''}${item.team_name ? '【' + item.team_name + '】' : ''}\n${item.work_title || ''}`;
-    const descText = item.description || '';
 
     const rowValues = [
       compositeTitle,
-      descText,
       ...(isCourseGroup ? [item.course_link ? `=HYPERLINK("${item.course_link}", "校訂課程")` : '-'] : []),
       item.slides_link ? `=HYPERLINK("${item.slides_link}", "簡報檔")` : '-',
       item.mindmap_link ? `=HYPERLINK("${item.mindmap_link}", "Mindomo心智圖")` : '-',
@@ -305,10 +302,11 @@ function processExportJudgeSheet(ss, payload) {
       .setWrap(true)
       .setFontSize(10);
 
-    // 置中對齊檔案與分數欄位
-    targetSheet.getRange(r, 3, 1, totalCols - 3).setHorizontalAlignment('center');
+    // 置中對齊檔案與分數欄位，評語欄維持靠左
+    targetSheet.getRange(r, 2, 1, totalCols - 2).setHorizontalAlignment('center');
     targetSheet.getRange(r, 1, 1, 1).setFontWeight('bold');
     targetSheet.getRange(r, fileEndCol + 5, 1, 2).setFontWeight('bold').setFontSize(11);
+    targetSheet.getRange(r, totalCols, 1, 1).setHorizontalAlignment('left');
   });
 
   // 4. 「以下空白」防竄改列
@@ -349,11 +347,10 @@ function processExportJudgeSheet(ss, payload) {
     .setBorder(true, true, true, true, true, true, '#000000', SpreadsheetApp.BorderStyle.SOLID);
 
   // 7. 設定最佳化欄寬
-  targetSheet.setColumnWidth(1, 210); // 隊伍與作品標題
-  targetSheet.setColumnWidth(2, 290); // 作品說明
-  let colPtr = 3;
+  targetSheet.setColumnWidth(1, 240); // 隊伍與作品標題
+  let colPtr = 2;
   if (isCourseGroup) {
-    targetSheet.setColumnWidth(colPtr++, 75);
+    targetSheet.setColumnWidth(colPtr++, 75); // 校訂課程
   }
   targetSheet.setColumnWidth(colPtr++, 70);  // 簡報檔
   targetSheet.setColumnWidth(colPtr++, 105); // Mindomo心智圖
@@ -364,7 +361,7 @@ function processExportJudgeSheet(ss, payload) {
   targetSheet.setColumnWidth(colPtr++, 75);  // 製作技巧 10%
   targetSheet.setColumnWidth(colPtr++, 70);  // 分數加總
   targetSheet.setColumnWidth(colPtr++, 60);  // 序位
-  targetSheet.setColumnWidth(colPtr, 320);   // 評語
+  targetSheet.setColumnWidth(colPtr, 340);   // 評語
 
   // 凍結前 2 列 (跨頁或捲動時固定表頭)
   targetSheet.setFrozenRows(2);
